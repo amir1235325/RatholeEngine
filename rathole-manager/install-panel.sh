@@ -203,7 +203,7 @@ fi
 mkdir -p /etc/rathole /etc/rathole-manager /usr/local/share/rathole
 [ -f "$SCRIPT_DIR/ratholectl" ] || die "ratholectl knar in askript peyda nashod."
 install -m 755 "$SCRIPT_DIR/ratholectl" /usr/local/bin/ratholectl
-[ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; log "common.sh nasb shod."; }
+[ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; rm -f /usr/local/bin/common.sh; log "common.sh nasb shod."; }
 log "ratholectl dar /usr/local/bin nasb shod."
 
 # ---------- systemd ----------

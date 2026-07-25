@@ -8,10 +8,12 @@ set -uo pipefail
 # common.sh agar knar file bashd, tavabe eshteraki ra lvd kon
 # baad az nasb: script dar /usr/local/bin vali common.sh dar /usr/local/share/rathole ast
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "$PWD")"
-if [ -f "$SCRIPT_DIR/common.sh" ]; then
+if [ "$SCRIPT_DIR" != "/usr/local/bin" ] && [ -f "$SCRIPT_DIR/common.sh" ]; then
   source "$SCRIPT_DIR/common.sh"
 elif [ -f /usr/local/share/rathole/common.sh ]; then
   source /usr/local/share/rathole/common.sh
+elif [ -f "$SCRIPT_DIR/common.sh" ]; then
+  source "$SCRIPT_DIR/common.sh"
 fi
 
 # pak-sazi temp files dar khorooj (chh movafagh chh khata)

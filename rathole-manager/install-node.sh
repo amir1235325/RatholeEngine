@@ -68,7 +68,7 @@ mkdir -p /etc/rathole
 # ---------- nasb ratholenode ----------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$SCRIPT_DIR/ratholenode" ] && { install -m 755 "$SCRIPT_DIR/ratholenode" /usr/local/bin/ratholenode; log "ratholenode nasb shod."; } || warn "ratholenode knar askript nist."
-[ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; log "common.sh nasb shod."; }
+[ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; rm -f /usr/local/bin/common.sh; log "common.sh nasb shod."; }
 
 # ---------- service systemd (tunnel asli) ----------
 log "nasb service systemd..."

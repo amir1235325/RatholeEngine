@@ -225,6 +225,14 @@ rollback_to(){ # $1 = masir-e snapshot dir
 
 # ---------- 2) mantegh-e update (mesl-e ghabl, dakhl-e tabe) ----------
 apply_update(){
+  # common.sh (agar dar baste bashad - avval nasb kon)
+  if [ -f "$SCRIPT_DIR/common.sh" ]; then
+    mkdir -p /usr/local/share/rathole
+    sed -i 's/\r$//' "$SCRIPT_DIR/common.sh"
+    install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh
+    rm -f /usr/local/bin/common.sh
+  fi
+
   # beroozresani abzarhaye CLI
   local t
   for t in ratholectl ratholenode; do
@@ -234,12 +242,6 @@ apply_update(){
       log "beroozresani shod: /usr/local/bin/$t"
     fi
   done
-  # common.sh (agar dar baste bashad)
-  if [ -f "$SCRIPT_DIR/common.sh" ]; then
-    mkdir -p /usr/local/share/rathole
-    sed -i 's/\r$//' "$SCRIPT_DIR/common.sh"
-    install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh
-  fi
 
   # --- samt panel ---
   if [ "$PANEL" -eq 1 ]; then
