@@ -1722,6 +1722,7 @@ const DICT={
   upd_ok:'apdit shod',upd_fail:'shekast',upd_done:'apdit tamam shod',ver_ok:'noskhe be-ruz ast',ver_old:'noskhe ghadimi — apdit kon',
   no_node_dst:'hich node-e kharej dardastras nist (aval yek node ezafe/roshan kon).',wire_fail:'gereftan token-e node shekast khord.',
   watchdog:'watchdog (restart khodkar):',wd_on:'roshan',wd_off:'khamoosh',wd_status:'vaziat',
+  adaptive_mode:'adaptive (swich khodkar):',adaptive_on:'on',adaptive_off:'off',adaptive_status:'vaziat',adaptive_test:'test eybyabi',
   svc_tunnel:'servicehaye in tunnel',add_svc:'+ service',no_svc:'servisi nist.',c_svc:'service',
   upstreams:'serverhaye Iran-e digar (upstream)',add_up:'+ upstream',no_up:'upstream nadari (faghat yek Iran).',status:'status',del_up:'hazf upstream',cf_delup:'hazf upstream',cf_delupsvc:'hazf service az upstream',
 
@@ -1742,6 +1743,7 @@ const DICT={
   t_up_addsvc:'afzoodan service be upstream',
   t_fw:'roshan kardan web fake',l_fw_port:'port (khali = pishfarz fake_port)',
   t_wd:'roshan kardan watchdog',l_wd_iv:'baze check (sanie)',
+  t_adaptive_node:'faal kardan adaptive failover',l_adaptive_iv:'baze check (sanie)',l_adaptive_fa:'had shekast motavali',l_adaptive_re:'had bazyabi motavali',
   t_edit_node:'virayesh node',l_inb_new:'inbound jadid (khali = bedoon taghir)',l_api_new:'port API jadid (off=hazf, khali=bedoon taghir)',nochg:'chizi baraye taghir nist',
   t_rename:'taghir nam node',l_new_name:'nam jadid',
   t_edit_srv:'virayesh server',
@@ -1829,6 +1831,7 @@ const DICT={
   upd_ok:'updated',upd_fail:'failed',upd_done:'update finished',ver_ok:'version up to date',ver_old:'outdated — please update',
   no_node_dst:'No foreign node reachable (add/start one first).',wire_fail:'Failed to fetch node token.',
   watchdog:'watchdog (auto restart):',wd_on:'On',wd_off:'Off',wd_status:'Status',
+  adaptive_mode:'adaptive failover:',adaptive_on:'Adaptive On',adaptive_off:'Off',adaptive_status:'Status',adaptive_test:'Test Probes',
   svc_tunnel:'Services on this tunnel',add_svc:'+ service',no_svc:'No services.',c_svc:'Service',
   upstreams:'Other Iran servers (upstream)',add_up:'+ upstream',no_up:'No upstream (single Iran).',status:'status',del_up:'Remove upstream',cf_delup:'Remove upstream',cf_delupsvc:'Remove service from upstream',
 
@@ -1846,6 +1849,7 @@ const DICT={
   t_up_addsvc:'Add service to upstream',
   t_fw:'Start fake web',l_fw_port:'Port (empty = default fake_port)',
   t_wd:'Enable watchdog',l_wd_iv:'Check interval (sec)',
+  t_adaptive_node:'Enable Adaptive Failover',l_adaptive_iv:'Check interval (sec)',l_adaptive_fa:'Failures threshold',l_adaptive_re:'Recoveries threshold',
   t_edit_node:'Edit node',l_inb_new:'New inbound (empty = no change)',l_api_new:'New API port (off=remove, empty=no change)',nochg:'Nothing to change',
   t_rename:'Rename node',l_new_name:'New name',
   t_edit_srv:'Edit server',
@@ -2262,10 +2266,14 @@ function renderNode(n,ov){
    <button class="g" onclick="noiseOnNode('${n}')">${t('noise_on')}</button>
    <button class="r" onclick="run('${n}','noise_off')">${t('noise_off')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('watchdog')}</span>
-
    <button class="g" onclick="wdOn('${n}')">${t('wd_on')}</button>
    <button class="r" onclick="run('${n}','watchdog_off')">${t('wd_off')}</button>
-   <button class="gh" onclick="run('${n}','watchdog_status')">${t('wd_status')}</button></div></div>`;
+   <button class="gh" onclick="run('${n}','watchdog_status')">${t('wd_status')}</button></div>
+   <div class="btns" style="margin-top:6px"><span class="sub">${t('adaptive_mode')}</span>
+   <button class="g" onclick="adaptiveOnNode('${n}')">${t('adaptive_on')}</button>
+   <button class="r" onclick="run('${n}','adaptive_off')">${t('adaptive_off')}</button>
+   <button class="gh" onclick="run('${n}','adaptive_status')">${t('adaptive_status')}</button>
+   <button class="gh" onclick="run('${n}','adaptive_test')">${t('adaptive_test')}</button></div></div>`;
  s+=`<div class="sec"><h4>${t('svc_tunnel')} <button class="g" onclick="addSvc('${n}')">${t('add_svc')}</button></h4>`;
  const sv=ov.services||[];
  if(!sv.length)s+=`<div class="empty">${t('no_svc')}</div>`;
@@ -2853,6 +2861,11 @@ function fakewebStart(n){formModal(t('t_fw'),[
 function wdOn(n){formModal(t('t_wd'),[
   {id:'interval',label:t('l_wd_iv'),val:'60',req:1}],
   v=>{closeModal();run(n,'watchdog_on',{interval:v.interval||'60'});});}
+function adaptiveOnNode(n){formModal(t('t_adaptive_node'),[
+  {id:'interval',label:t('l_adaptive_iv'),val:'30',req:1},
+  {id:'failures',label:t('l_adaptive_fa'),val:'3',req:1},
+  {id:'recoveries',label:t('l_adaptive_re'),val:'5',req:1}],
+  v=>{closeModal();run(n,'adaptive_on',{interval:v.interval||'30',failures:v.failures||'3',recoveries:v.recoveries||'5'});});}
 function kcpOnIran(n){formModal(t('t_kcp_iran'),[
   {id:'port',label:t('l_udp'),val:'443',req:1},
   {id:'profile',label:t('l_profile'),type:'select',val:'balanced',opts:PROF}],
