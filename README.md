@@ -19,7 +19,7 @@ _Built for censorship-resistant tunneling into Iran._
 ![python](https://img.shields.io/badge/python-stdlib%20only-3776AB?logo=python&logoColor=white)
 ![tunnel](https://img.shields.io/badge/tunnel-rathole%20%2B%20nginx-7c3aed)
 
-[**English**](#what-is-this) · [**فارسی**](docs/README.fa.md) · [**Full Wiki**](docs/wiki/Home.md) · [Quick start](#quick-start) · [Documentation](#documentation) · [Telegram](https://t.me/l8PY4NET)
+[**English**](#what-is-this) · [**فارسی**](docs/README.fa.md) · [**Full Wiki**](https://github.com/loopy-iri/RatholeEngine/wiki) · [Quick start](#quick-start) · [Documentation](#documentation) · [Telegram](https://t.me/l8PY4NET)
 
 </div>
 
@@ -144,6 +144,7 @@ TLS certs are never removed. The shared `common.sh` is removed only when no othe
 
 | Doc | Contents |
 |-----|----------|
+| [**GitHub Wiki**](https://github.com/loopy-iri/RatholeEngine/wiki) | **Complete GitHub Wiki** (Getting Started, CLI Reference, Adaptive Filtering, Hub, Troubleshooting). |
 | [`docs/architecture.md`](docs/architecture.md) | Three roles, the state→regenerate→reload principle, the path==name==map==inbound invariant. |
 | [`docs/transport-modes.md`](docs/transport-modes.md) | The four transport carriers + game/SNI, with diagram. |
 | [`docs/traffic-flow.md`](docs/traffic-flow.md) | Layer-by-layer packet path (Mermaid + SVG diagrams). |
