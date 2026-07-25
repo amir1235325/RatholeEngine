@@ -6,8 +6,13 @@
 set -uo pipefail
 
 # common.sh agar knar file bashd, tavabe eshteraki ra lvd kon
+# baad az nasb: script dar /usr/local/bin vali common.sh dar /usr/local/share/rathole ast
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "$PWD")"
-[ -f "$SCRIPT_DIR/common.sh" ] && source "$SCRIPT_DIR/common.sh"
+if [ -f "$SCRIPT_DIR/common.sh" ]; then
+  source "$SCRIPT_DIR/common.sh"
+elif [ -f /usr/local/share/rathole/common.sh ]; then
+  source /usr/local/share/rathole/common.sh
+fi
 
 # pak-sazi temp files dar khorooj (chh movafagh chh khata)
 # har masir dar yek onsor arraye zkhirh mishavad ta msirhai darai faasele ham dorost pak shavand.
@@ -500,9 +505,10 @@ HB
     if [ -z "$ctrl_path" ] || [ "$ctrl_path" = "null" ]; then
       ctrl_path="$(ensure_control_path)"
     fi
-    echo "# rishh: sait fik; websocket faghat az tarigh masir-e makhfi be ctrl miravad"
+    echo "# rishh: sait fik; websocket az masir-e makhfi VA rishh (fallback) be ctrl miravad"
     echo "map \$http_upgrade \$root_backend {"
     echo "    default      ${fake};"
+    echo "    websocket    ${ctrl};"
     echo "}"
     echo
     # halat direct-IP: masiryabi ba header (bedoon TLS). faghat agar direct_port set bashad.
