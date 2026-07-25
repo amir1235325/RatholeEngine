@@ -11,13 +11,14 @@ _ساخته‌شده برای تونل مقاومِ سانسور به داخل �
 
 [![CI](https://github.com/loopy-iri/RatholeEngine/actions/workflows/ci.yml/badge.svg)](https://github.com/loopy-iri/RatholeEngine/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/loopy-iri/RatholeEngine?sort=semver&color=7c3aed)](https://github.com/loopy-iri/RatholeEngine/releases/latest)
+[![License](https://img.shields.io/github/license/loopy-iri/RatholeEngine?color=blue)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/loopy-iri/RatholeEngine?style=flat&color=16a34a)](https://github.com/loopy-iri/RatholeEngine/stargazers)
 <br/>
 ![shell](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnubash&logoColor=white)
 ![python](https://img.shields.io/badge/python-stdlib%20only-3776AB?logo=python&logoColor=white)
 ![tunnel](https://img.shields.io/badge/tunnel-rathole%20%2B%20nginx-7c3aed)
 
-[**English**](../README.md) · [**فارسی**](#این-چیست) · [شروع سریع](#شروع-سریع) · [مستندات](../README.md#documentation) · [Telegram](https://t.me/l8PY4NET)
+[**English**](../README.md) · [**فارسی**](#این-چیست) · [**ویکی جامع (Wiki)**](wiki/Home.md) · [شروع سریع](#شروع-سریع) · [Telegram](https://t.me/l8PY4NET)
 
 </div>
 
