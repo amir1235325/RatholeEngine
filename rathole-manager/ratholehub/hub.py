@@ -1001,7 +1001,6 @@ def parse_node_ls(text):
 _ADAPTIVE_ALLOWED_KEYS = frozenset({
     "time", "current", "classification", "latency_ms", "consecutive_failures",
 })
-_ADAPTIVE_SECRET_KEYS = frozenset({"WS_PATH", "token", "key", "control_path", "noise_privkey"})
 
 def parse_adaptive_state(raw):
     """raw: string ya dict. -> dict ba field-haye motabar ya {'classification':'unknown'}."""

@@ -109,9 +109,10 @@ gen_client(){
       echo "type = \"websocket\""
       echo "[client.transport.websocket]"
       echo "tls = ${tls}"
-      # masir-e makhfi control WebSocket (az node.env via WS_PATH; pishfarz '/')
-      local ws_path="${WS_PATH:-/}"
-      echo "path = \"${ws_path}\""
+      # TAVAHH: rathole-e v0.5.0 dar [client.transport.websocket] FAGHAT `tls` ra mipazirad;
+      # field-e `path` nadarad va config ra KAMLAN rad mikonad (client crash-loop). control
+      # WebSocket-e rathole hamishe '/' ast va gabel-e taghir nist — routing-e path tvst nginx
+      # (map $uri) anjam mishavad, na rathole. pas WS_PATH ra inja TZRIGH nakon.
       if [ "$tls" = "true" ]; then
         echo "[client.transport.tls]"
         echo "$hostline"
@@ -1117,14 +1118,17 @@ adaptive_probe_kcp(){
 # ejra-ye probe-ha va naveshtan state (baraye sandoz bast: mock-pezir)
 adaptive_run_probe(){
   load_env
-  local host="${SERVER%%:*}" port="${SERVER##*:}" path="${WS_PATH:-/}" mode="${TUNNEL:-ws}"
+  # TAVAHH: control channel-e rathole hamishe '/' ast va nginx ham WS-upgrade ra rooye '/' route
+  # mikonad. pas probe HATMAN bayad be '/' beravad; taen path-e digar (masalan WS_PATH-e ghadimi)
+  # fakeweb ra mibinad (na '101') va adaptive ESBHTBAHAN failover mikonad.
+  local host="${SERVER%%:*}" port="${SERVER##*:}" mode="${TUNNEL:-ws}"
   local cls ms result
   local t0; t0="$(date +%s%3N 2>/dev/null || echo 0)"
   local failures=0
   [ -f "$ADAPTIVE_STATE" ] && failures="$(python3 -c "import json; d=json.load(open('$ADAPTIVE_STATE')); print(d.get('consecutive_failures',0))" 2>/dev/null || echo 0)"
 
   case "$mode" in
-    ws)   result="$(adaptive_probe_ws_tls "$host" "$port" "$path" 2>/dev/null)" ;;
+    ws)   result="$(adaptive_probe_ws_tls "$host" "$port" "/" 2>/dev/null)" ;;
     plain) result="$(adaptive_probe_ws_plain "$host" "${PLAIN_REMOTE##*:}" "/" 2>/dev/null)" ;;
     kcp)  result="$(adaptive_probe_kcp 2>/dev/null)" ;;
     *)    result="healthy:0" ;;

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 RATHOLE_VERSION="${RATHOLE_VERSION:-v0.5.0}"
-SERVER="" NAME="" TOKEN="" INBOUND="" API_TOKEN="" API_INBOUND="" RESTORE="" WS_PATH=""
+SERVER="" NAME="" TOKEN="" INBOUND="" API_TOKEN="" API_INBOUND="" RESTORE=""
 
 log(){ printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[1;33m[*]\033[0m %s\n' "$*"; }
@@ -24,7 +24,6 @@ while [ $# -gt 0 ]; do
     --api-token)         API_TOKEN="$2"; shift 2;;
     --api-inbound-port)  API_INBOUND="$2"; shift 2;;
     --restore)           RESTORE="$2"; shift 2;;
-    --ws-path)           WS_PATH="$2"; shift 2;;
     --version)           RATHOLE_VERSION="$2"; shift 2;;
     *) die "argument nashenakhte: $1";;
   esac
@@ -106,7 +105,7 @@ fi
 
 # ---------- nasb tazh ----------
 log "neveshtan /etc/rathole/node.env va services.conf..."
-{ echo "SERVER=${SERVER}"; echo "RATHOLE_VERSION=${RATHOLE_VERSION}"; [ -n "$WS_PATH" ] && echo "WS_PATH=${WS_PATH}" || true; } > /etc/rathole/node.env
+{ echo "SERVER=${SERVER}"; echo "RATHOLE_VERSION=${RATHOLE_VERSION}"; } > /etc/rathole/node.env
 chmod 600 /etc/rathole/node.env
 {
   echo "${NAME}|${TOKEN}|${INBOUND}"
