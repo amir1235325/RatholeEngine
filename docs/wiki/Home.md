@@ -1,6 +1,6 @@
 # RatholeEngine Wiki
 
-خوش آمدید به مستندات جامع و ویکی پروژه **RatholeEngine** (نسخه v1.5.0).
+خوش آمدید به مستندات جامع و ویکی پروژه **RatholeEngine** (نسخه v1.6.0).
 
 این سیستم یک راهکار **معکوس‌تونل (Reverse Tunnel)** پیشرفته و چندموقعیتی بر پایه‌ی **rathole + Nginx** برای عبور از فیلترینگ شدید است.
 
@@ -23,7 +23,8 @@
    - دستورات سرور ایران (`ratholectl`)
    - دستورات نود خارج (`ratholenode`)
    - مدیریت مسیر مخفی کنترلی (`control-path`)
-   - حالت‌های Noise، Direct-IP و Game/SNI
+   - حامل‌ها: KCP، Plain، Noise، **Backhaul (SMUX)**، Direct-IP و Game/SNI
+   - آپدیت و کانال بتا (`update beta`)
 
 4. 🖥️ **[مدیریت مرکزی با Hub (Hub Management)](Hub-Management)**
    - نصب و کانفیگ پنل وب Hub (`hub.py`)

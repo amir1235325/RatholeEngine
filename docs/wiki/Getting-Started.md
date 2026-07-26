@@ -54,3 +54,29 @@ curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/instal
 ```bash
 curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo bash -s -- --update
 ```
+
+اگر از قبل نصب دارید، ساده‌تر است مستقیم از خود سرور بزنید:
+```bash
+ratholectl update
+```
+
+### 🧪 کانال بتا (نسخه‌های آزمایشی)
+
+برای تست قابلیت‌های جدید پیش از انتشار پایدار:
+```bash
+ratholectl update beta
+```
+
+روی نود خارج:
+```bash
+ratholenode update beta
+```
+
+یا با نصب یک‌خطی:
+```bash
+curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo RATHOLE_RELEASE=beta bash -s -- --update
+```
+
+برگشت به کانال پایدار فقط با زدن `ratholectl update` (بدون آرگومان) انجام می‌شود.
+
+⚠️ نسخه‌ی بتا آزمایشی است. چون آپدیت پیش از هر تغییر اسنپ‌شات کامل می‌گیرد، در صورت مشکل با `ratholectl update` یا `update.sh --rollback` برمی‌گردید.

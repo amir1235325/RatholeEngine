@@ -19,9 +19,8 @@ set -euo pipefail
 
 # ---------- tanzimat ----------
 GH="${RATHOLE_GH:-loopy-iri/RatholeEngine}"    # owner/repo — pishfarz، ba RATHOLE_GH override kon
-REL="${RATHOLE_RELEASE:-latest}"               # latest ya yek tag mesl v1.0.0
+REL="${RATHOLE_RELEASE:-latest}"               # latest | beta | yek tag mesl v1.0.0
 BASE="https://github.com/${GH}/releases"
-if [ "$REL" = "latest" ]; then DL="$BASE/latest/download"; else DL="$BASE/download/$REL"; fi
 
 c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
 c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
@@ -65,11 +64,44 @@ fetch(){ # $1=url (kamel، mesl https://github.com/...) $2=out ; mostaghim، sps
   return 1
 }
 
+# akharin tag-e pre-release (beta/rc/alpha) ra az atom-e GitHub darmiavarad.
+# CHERA atom: masir-e `releases/latest/download` pre-release ha ra NADIDE migirad، pas baraye
+# beta bayad tag-e daghigh ra bedanim. api.github.com az mirror-haye ghproxy obur nemikonad
+# vali github.com/<slug>/releases.atom mikonad — va be jq ham niaz nadarad.
+# (hamsan-e resolve_beta_tag dar rathole-manager/common.sh؛ inja copy ast chon install.sh
+#  be sooratِ mostaghel ba curl|bash ejra mishavad va common.sh hanooz nasb nashode.)
+resolve_beta_tag(){
+  local m out tag
+  for m in "${RATHOLE_MIRRORS[@]}"; do
+    out="$(curl -fsSL --connect-timeout 15 --retry 1 "${m}https://github.com/${GH}/releases.atom" 2>/dev/null)" || continue
+    # '|| true' ALZAMI ast: install.sh ba 'set -e' ejra mishavad va agar grep hich beta-i
+    # peyda nakonad، in enteshab non-zero mishavad va script vasat-e kar mimirad.
+    tag="$(printf '%s' "$out" \
+      | grep -oE 'releases/tag/v[0-9A-Za-z._-]+' \
+      | sed 's#.*releases/tag/##' \
+      | grep -E -- '-(beta|rc|alpha)' \
+      | head -n1 || true)"
+    [ -n "$tag" ] && { printf '%s\n' "$tag"; return 0; }
+  done
+  return 1
+}
+
+# masir-e download ra bar asas-e kanal moshakhas mikonad (baad az tarif-e fetch/die چون beta be shabake niaz darad).
+resolve_dl(){
+  if [ "$REL" = "beta" ]; then
+    log "peyda kardan-e akharin noskhe-ye beta..."
+    REL="$(resolve_beta_tag)" || die "hich noskhe-ye beta-i montasher nashode (ya dastresi be GitHub nist)."
+    warn "kanal-e BETA: $(c_y "$REL") — noskhe-ye azmayeshi، momken ast paydar nabashad."
+  fi
+  if [ "$REL" = "latest" ]; then DL="$BASE/latest/download"; else DL="$BASE/download/$REL"; fi
+}
+
 main(){
   install_prereqs
   local tmp; tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
 
+  resolve_dl
   log "download az GitHub release: $(c_y "$GH ($REL)")"
   # 1) bootstrap.sh (mantegh-e amade-sazi va nasb)
   if ! fetch "$DL/bootstrap.sh" "$tmp/bootstrap.sh"; then

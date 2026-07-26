@@ -79,6 +79,7 @@ ratholectl paths                       # مسیر همه کانفیگ‌ها و 
 ratholectl doctor                      # بررسی سلامت
 ratholectl version                     # نسخهٔ manager + rathole (manager_version=/rathole_version=)
 ratholectl update                      # به‌روزرسانی کامل از GitHub (آخرین Release؛ snapshot + rollback خودکار)
+ratholectl update beta                 # کانال بتا: آخرین pre-release (آزمایشی)
 ratholectl menu                        # منوی تعاملی کامل
 ```
 
@@ -123,6 +124,7 @@ ratholenode rm-svc <name>              # حذف سرویس
 ratholenode set SERVER newdomain:443   # تغییر سرور (تانل اصلی/main)
 ratholenode check                      # بررسی تداخل پورت با nginx نود
 ratholenode update                     # به‌روزرسانی کامل از GitHub (آخرین Release؛ snapshot + rollback خودکار)
+ratholenode update beta                # کانال بتا: آخرین pre-release (آزمایشی)
 ratholenode version                    # نسخهٔ manager + rathole
 ratholenode status | logs | apply
 ```
@@ -220,7 +222,37 @@ ratholenode noise off                # برگشت فوری به websocket/443 (�
 
 > کلید عمومی قابل انتشار است؛ کلید خصوصی فقط روی ایران می‌ماند. پترن پیش‌فرض `Noise_NK_25519_ChaChaPoly_BLAKE2s` است (فقط سرور کلید استاتیک دارد). پورت noise **عمومی** است و باید در فایروال باز باشد؛ با ۴۴۳/game تداخل ندارد (رد می‌شود). در پنل وب هم دکمه‌های noise با **پرکردن خودکار کلید** از سرور ایران موجود است.
 
-### ۲.۶) `direct` — ورودیِ direct-IP با مسیریابیِ هدر (بدون TLS/احراز هویت)
+### ۲.۶) `backhaul` — هسته‌ی جدا با مالتی‌پلکس SMUX (پشت همان ۴۴۳)
+rathole برای هر connection کاربر یک stream مجزا باز می‌کند و **mux ندارد**؛ روی لینک‌های شلوغ یا پرافت این گلوگاه می‌شود. حالت `backhaul` یک **هسته‌ی کاملاً جدا** (باینری Go از `Musixal/Backhaul`) را کنار rathole اجرا می‌کند که چند connection را با **SMUX** روی یک stream مالتی‌پلکس می‌کند.
+
+برخلاف `noise` که روی یک پورت عمومی جدا می‌نشیند، backhaul **تک‌پورت/تک‌دامنه را حفظ می‌کند**: `backhaul-server` روی `127.0.0.1:<port>` (پیش‌فرض ۳۰۸۰) گوش می‌دهد و nginx مسیرهای `/channel` (کانال کنترلی) و `/tunnel` (دیتا) را روی همان ۴۴۳ به آن proxy می‌کند. این دو مسیر **در خود backhaul هاردکد شده‌اند** و قابل تغییر نیستند؛ چون کاربران به `/` (سایت فیک) و `/<node>` (دیتا) می‌روند، تداخلی پیش نمی‌آید.
+
+```bash
+# روی ایران: هسته را روشن کن (پورت داخلی است، نه عمومی)
+ratholectl backhaul on                       # = backhaul on 3080 wsmux balanced
+ratholectl backhaul on 3080 wsmux aggressive
+ratholectl backhaul node <name> on           # این نود را به backhaul ببر
+ratholectl backhaul node <name> off          # برگرداندنش به ws/443
+ratholectl backhaul status                   # روشن/خاموش + transport دو طرف + نودها + وضعیت سرویس
+ratholectl backhaul show                     # چاپ دوباره‌ی دستور آماده‌ی نود
+ratholectl backhaul off                      # خاموشی کامل: همه نودها به ws برمی‌گردند، unit/toml حذف می‌شود
+
+# روی نود: دقیقاً همان خطی که «show» بالا چاپ کرد
+ratholenode backhaul on <DOMAIN> <TOKEN> wssmux balanced
+ratholenode backhaul status
+ratholenode backhaul off                     # برگشت به websocket/443
+```
+
+نکات کلیدی:
+
+- **transport دو طرف عمداً یکی نیست.** چون TLS را فقط nginx ترمینیت می‌کند، سرور همیشه واریانت **بدون TLS** می‌گیرد (`ws`/`wsmux`) و کلاینت واریانت **TLS‌دار** (`wss`/`wssmux`) — دقیقاً همان قاعده‌ی rathole. هر دو سمت ورودی اشتباه را با پیام راهنما رد می‌کنند.
+- **`tcpmux` پشتیبانی نمی‌شود**؛ TCP خام است و از nginx لایه ۷ رد نمی‌شود.
+- **profile باید دو طرف یکی باشد** (`balanced`/`lossy`/`aggressive`). `mux_con` فقط سمت سرور و `connection_pool` فقط سمت کلاینت معنا دارد.
+- **هر نود دقیقاً یک حامل دارد.** `backhaul` یک مقدار از `.transport` نود است (مثل `noise`)؛ نودِ backhaul از `server.toml` خارج می‌شود و به `ports` در `backhaul-server.toml` می‌رود. اگر این نبود، `rathole-server` و `backhaul-server` هر دو `127.0.0.1:<port>` را bind می‌کردند و دومی بالا نمی‌آمد. روی نود هم `rathole-client` عمداً متوقف و disable می‌شود.
+- **نگاشت پورت `"127.0.0.1:<port_ایران>=<inbound_port_نود>"`** است، یعنی همان پورتی که `map $uri` در nginx به آن اشاره می‌کند دست‌نخورده می‌ماند — **مسیر کاربران هرگز عوض نمی‌شود**. سرویس `<name>_api` هم اگر وجود داشته باشد اضافه می‌شود.
+- توکن مشترک (`openssl rand -hex 20`) جای گواهی را می‌گیرد؛ **secret است** و فقط به نودهای backhaul داده می‌شود. در پنل وب دکمه‌های backhaul با **پرکردن خودکار دامنه و توکن** از سرور ایران موجود است.
+
+### ۲.۷) `direct` — ورودیِ direct-IP با مسیریابیِ هدر (بدون TLS/احراز هویت)
 یک **درگاهِ ورودیِ کاربریِ جدا** (نه یک حاملِ transport): کاربر **مستقیم به IP سرور ایران** روی یک پورت HTTP سادهٔ جداگانه (پیش‌فرض `8081`) وصل می‌شود و به‌جای `path`، از یک **هدرِ استتارشده** (پیش‌فرض `X-Cdn-Id`) برای انتخاب نود استفاده می‌کند — مقدارِ هدر = **نام نود**. هدرِ `Host` فقط یک **decoy** است (مثلاً `myket.ir`) و در مسیریابی نقشی ندارد. درخواستِ بدونِ هدرِ شناخته‌شده به **سایتِ فیک** می‌افتد (روی این پورت هیچ path-routing نیست). برخلاف path-routing که نامِ نود در URL دیده می‌شود (`/trk01/...`)، اینجا انتخابِ نود در یک هدر پنهان می‌شود — استتارِ بهتر برای دسترسی از راهِ IP خام.
 
 ```bash

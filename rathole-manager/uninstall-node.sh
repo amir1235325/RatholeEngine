@@ -32,11 +32,15 @@ ask_yn "adamh?" || { log "lghv shod."; exit 0; }
 log "tavaghof va ghirfaalsazi rathole-client..."
 systemctl disable --now rathole-client 2>/dev/null || true
 rm -f /etc/systemd/system/rathole-client.service
+# client-e backhaul (agar roshan shode bood)
+systemctl disable --now rathole-backhaul-client 2>/dev/null || true
+rm -f /etc/systemd/system/rathole-backhaul-client.service
+rm -f /usr/local/bin/backhaul-client
 systemctl daemon-reload 2>/dev/null || true
 
 # ---------- hazf config va state ----------
 log "hazf client.toml va node.env..."
-rm -f /etc/rathole/client.toml /etc/rathole/node.env
+rm -f /etc/rathole/client.toml /etc/rathole/node.env /etc/rathole/backhaul-client.toml
 if [ -d /etc/rathole ] && [ -z "$(ls -A /etc/rathole 2>/dev/null)" ]; then rmdir /etc/rathole; fi
 
 # ---------- hazf abzar ----------

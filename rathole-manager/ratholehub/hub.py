@@ -241,6 +241,9 @@ RE_EMAIL   = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]
 RE_PATH    = re.compile(r"^/[A-Za-z0-9_./-]{1,255}\Z")   # masir file gvahi (mtlgh)
 RE_SLUG    = re.compile(r"^[A-Za-z0-9._-]{1,64}/[A-Za-z0-9._-]{1,64}\Z")   # owner/repo-ye GitHub
 RE_HEADER  = re.compile(r"^[A-Za-z0-9-]{1,40}\Z")   # naam-e header-e masiryabi-ye direct
+RE_BH_SRV  = re.compile(r"^(ws|wsmux)\Z")           # transport-e backhaul samt-e Iran (bedoon TLS)
+RE_BH_CLI  = re.compile(r"^(wss|wssmux)\Z")         # transport-e backhaul samt-e node (TLS be nginx:443)
+RE_BH_TOK  = re.compile(r"^[A-Fa-f0-9]{16,64}\Z")   # token-e moshtarak-e backhaul (openssl rand -hex)
 
 # ---------- whitelist dstvrha (bedoon shl dlkhvah) ----------
 # har action → sazndhi argumenthaye amn. brmigrdand list arg baraye CLI.
@@ -352,6 +355,23 @@ def build_iran_cmd(action, a):
         name = a.get("name", "")
         if not RE_NAME.match(name): return None
         return ["ratholectl", "noise", "node", name, ("on" if action == "noise_node_on" else "off")]
+    # ---- backhaul: core-e SMUX-e joda posht-e nginx/443 (tak-port hefz mishavad) ----
+    if action == "backhaul_status": return ["ratholectl", "backhaul", "status"]
+    if action == "backhaul_show":   return ["ratholectl", "backhaul", "show"]
+    if action == "backhaul_off":    return ["ratholectl", "backhaul", "off"]
+    if action == "backhaul_on":
+        port      = str(a.get("port", "3080") or "3080")
+        transport = a.get("transport", "wsmux") or "wsmux"
+        profile   = a.get("profile", "balanced") or "balanced"
+        # transport-e server HATMAN bedoon-e TLS ast — TLS faghat rooye nginx terminate mishavad.
+        if not RE_PORT.match(port):        return None
+        if not RE_BH_SRV.match(transport): return None
+        if not RE_PROFILE.match(profile):  return None
+        return ["ratholectl", "backhaul", "on", port, transport, profile]
+    if action in ("backhaul_node_on", "backhaul_node_off"):
+        name = a.get("name", "")
+        if not RE_NAME.match(name): return None
+        return ["ratholectl", "backhaul", "node", name, ("on" if action == "backhaul_node_on" else "off")]
     # ---- service game (SNI rooye 443 + TLS rooye node) ----
 
     if action == "game_ls":   return ["ratholectl", "game", "ls"]
@@ -459,6 +479,20 @@ def build_node_cmd(action, a):
             if not RE_HOST.match(pattern): return None
             cmd.append(pattern)
         return cmd
+    # ---- backhaul: client-e SMUX ke be domain/443 (nginx → backhaul-server) vasl mishavad ----
+    if action == "backhaul_status": return ["ratholenode", "backhaul", "status"]
+    if action == "backhaul_off":    return ["ratholenode", "backhaul", "off"]
+    if action == "backhaul_on":
+        domain    = a.get("domain", "")
+        token     = a.get("token", "")
+        transport = a.get("transport", "wssmux") or "wssmux"
+        profile   = a.get("profile", "balanced") or "balanced"
+        # transport-e client HATMAN TLS-dar ast (be nginx:443 mizanad).
+        if not RE_HOST.match(domain):      return None
+        if not RE_BH_TOK.match(token):     return None
+        if not RE_BH_CLI.match(transport): return None
+        if not RE_PROFILE.match(profile):  return None
+        return ["ratholenode", "backhaul", "on", domain, token, transport, profile]
     if action == "migrate":     return ["ratholenode", "migrate"]
 
     if action == "tune":        return ["ratholenode", "tune"]
@@ -556,6 +590,7 @@ WRITE_ACTIONS = {
     "plain_on", "plain_off",
     "direct_on", "direct_off",
     "noise_on", "noise_off", "noise_node_on", "noise_node_off",
+    "backhaul_on", "backhaul_off", "backhaul_node_on", "backhaul_node_off",
 
     "backup", "enable", "regen_full", "regen",
     # node
@@ -780,16 +815,32 @@ def mock_run(server, cmd_args):
             "domain": "rp01.l1t.ir", "public_ip": "5.202.4.40",
             "transport": "websocket+TLS (443)",
             "ports": {"control": 2333, "fake": 8080, "sub": 2096, "internal": 8443,
-                      "plain": None, "direct": None, "hub": 8088, "noise": 2334},
+                      "plain": None, "direct": None, "hub": 8088, "noise": 2334,
+                      "backhaul": 3080},
             "direct_header": "X-Cdn-Id",
             "cert": {"fullchain": "/etc/letsencrypt/live/rp01.l1t.ir/fullchain.pem",
                      "key": "/etc/letsencrypt/live/rp01.l1t.ir/privkey.pem",
                      "exists": "yes", "expiry": "Oct 12 09:00:00 2026 GMT", "self_signed": "no"},
-            "services": {"rathole_server": "yes", "nginx": "yes", "nginx_config_ok": "yes", "noise": "yes"},
+            "services": {"rathole_server": "yes", "nginx": "yes", "nginx_config_ok": "yes",
+                         "noise": "yes", "backhaul": "yes"},
             "sni_count": 1, "node_count": 2,
-            "nodes": [{"name": "trk01", "port": 1005, "inbound_port": 8444, "api_local_port": None, "sni": None},
-                      {"name": "gamenodetrk", "port": 1007, "inbound_port": 2101, "api_local_port": 7001, "sni": "gmtrk.l1t.ir"}]
+            "nodes": [{"name": "trk01", "port": 1005, "inbound_port": 8444, "api_local_port": None,
+                       "sni": None, "transport": "backhaul"},
+                      {"name": "gamenodetrk", "port": 1007, "inbound_port": 2101, "api_local_port": 7001,
+                       "sni": "gmtrk.l1t.ir", "transport": None}]
         }), "err": ""}
+    if j == "ratholectl backhaul show":
+        return {"rc": 0, "out":
+            "──────── faalsazi backhaul (SMUX core) rooye node kharej ────────\n"
+            "rooye node in ra bezan (tunnel-e mux az haman domain/443 obur miknd):\n"
+            "  ratholenode backhaul on rp01.l1t.ir 4e9c1f7a2b8d6053ae71cc94f20d3b6857aa19ef wssmux balanced\n"
+            "────────────────────────────────────────", "err": ""}
+    if j == "ratholectl backhaul status":
+        return {"rc": 0, "out": "backhaul (SMUX core): roshan  backhaul-server ru-ye 127.0.0.1:3080 "
+                "(server=wsmux / client=wssmux, profile=balanced, az nginx/443)  (node-ha: 1)\n"
+                "  node-haye backhaul: trk01", "err": ""}
+    if j == "ratholenode backhaul status":
+        return {"rc": 0, "out": "backhaul client: active  → rp01.l1t.ir:443 (transport=wssmux, profile=balanced)", "err": ""}
     if j == "ratholectl paths":
         return {"rc": 0, "out": "──────── masir-e config-ha va file-ha ────────\n"
                 "  ✓  state.json             /etc/rathole-manager/state.json\n"
@@ -886,6 +937,20 @@ def parse_noise_connect(text):
         m = re.search(r"ratholenode\s+noise\s+on\s+\S+:(\d+)\s+([A-Za-z0-9+/]{40,64}={0,2})(?:\s+(\S+))?", line)
         if m:
             return {"port": m.group(1), "pubkey": m.group(2), "pattern": m.group(3) or ""}
+    return None
+
+
+def parse_backhaul_connect(text):
+    # az khorooji "ratholectl backhaul show" khat
+    # "ratholenode backhaul on <domain> <token> <transport> <profile>" ra darmiavarad.
+    for line in (text or "").splitlines():
+        # NOKTE: 'wssmux' bayad GHABL az 'wss' biayad — alternation-e Python chap-be-rast ast va
+        # ba (wss|wssmux) faghat 'wss' match mishavad va 'mux ...' baghi mimanad (profile gom mishavad).
+        m = re.search(r"ratholenode\s+backhaul\s+on\s+(\S+)\s+([A-Fa-f0-9]{16,64})\s+(wssmux|wss)"
+                      r"(?:\s+(balanced|lossy|aggressive))?", line)
+        if m:
+            return {"domain": m.group(1), "token": m.group(2),
+                    "transport": m.group(3), "profile": m.group(4) or "balanced"}
     return None
 
 def parse_version(text):
@@ -1148,6 +1213,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/servers/([A-Za-z0-9_-]+)/noiseconnect$", p)
         if m:
             return self._noiseconnect(m.group(1))
+        m = re.match(r"^/api/servers/([A-Za-z0-9_-]+)/backhaulconnect$", p)
+        if m:
+            return self._backhaulconnect(m.group(1))
         m = re.match(r"^/api/servers/([A-Za-z0-9_-]+)/nodeconnect/([A-Za-z0-9_-]+)$", p)
         if m:
             return self._nodeconnect(m.group(1), m.group(2))
@@ -1454,6 +1522,23 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {"ok": True, "remote": remote, "pubkey": info["pubkey"],
                                 "pattern": info.get("pattern", "")})
 
+    def _backhaulconnect(self, name):
+        # az server Iran khatte etesal backhaul (domain + token + transport + profile) ra migirad
+        # ta form-e node bedoon-e typo por shavad — token dasti copy nashavad.
+        s = self._find(name)
+        if not s:
+            return self._send(404, {"error": "server not found"})
+        if s.get("role") != "iran":
+            return self._send(400, {"error": "backhaulconnect fght baraye server iran ast"})
+        show = run_on_server(s, ["ratholectl", "backhaul", "show"])
+        info = parse_backhaul_connect(show.get("out", ""))
+        if not info or not info.get("token"):
+            return self._send(200, {"ok": False, "error": "backhaul roshan nist ya token peida nashod",
+                                    "raw": show.get("out", "") + show.get("err", "")})
+        return self._send(200, {"ok": True, "domain": info["domain"], "token": info["token"],
+                                "transport": info.get("transport", "wssmux"),
+                                "profile": info.get("profile", "balanced")})
+
     def _nodeconnect(self, name, node):
         # az server Iran, meshkhassat-e yek node (name/token/inbound) ra migirad ta betavan
         # ba yek dokme rooye node-e kharej (ya upstream-esh) be-onvan service sim-keshi kard.
@@ -1704,6 +1789,9 @@ const DICT={
   noise_mode:'halat noise (ramznegari-shode, bedoon TLS/cert):',noise_on:'noise on',noise_off:'noise off',noise_node_on:'in node → noise',noise_node_off:'in node → ws',
   t_noise_iran:'roshan kardan noise (samt Iran)',l_noise_port:'port TCP omomi (masalan 2334)',
   t_noise_node:'roshan kardan noise (samt node)',l_noise_remote:'IP:PORT Iran (TCP noise)',l_noise_key:'pubkey server (az "namayesh")',l_noise_pattern:'pattern (pishfarz: Noise_NK...)',
+  bh_mode:'core-e backhaul (SMUX, posht-e nginx/443):',bh_on:'backhaul on',bh_off:'backhaul off',bh_node_on:'in node → backhaul',bh_node_off:'in node → ws',
+  t_bh_iran:'roshan kardan backhaul (samt Iran)',l_bh_port:'port dakheli 127.0.0.1 (masalan 3080)',l_bh_tr_srv:'transport server (bedoon TLS)',l_bh_prof:'profile mux (bayad do taraf yeksan bashad)',
+  t_bh_node:'roshan kardan backhaul (samt node)',l_bh_domain:'domain Iran (haman domain 443)',l_bh_token:'token moshtarak (az "namayesh")',l_bh_tr_cli:'transport client (TLS)',
   direct_mode:'halat direct-IP (masiryabi ba header, bedoon TLS):',direct_on:'direct on',direct_off:'direct off',
   t_direct_iran:'roshan kardan direct-IP (samt Iran)',l_direct_port:'port HTTP (masalan 8081)',l_direct_header:'naam header (masalan X-Cdn-Id)',
 
@@ -1813,6 +1901,9 @@ const DICT={
   noise_mode:'Noise mode (encrypted, no TLS/cert):',noise_on:'noise on',noise_off:'noise off',noise_node_on:'this node → noise',noise_node_off:'this node → ws',
   t_noise_iran:'Enable noise (Iran side)',l_noise_port:'Public TCP port (e.g. 2334)',
   t_noise_node:'Enable noise (node side)',l_noise_remote:'IP:PORT Iran (TCP noise)',l_noise_key:'Server pubkey (from "Show")',l_noise_pattern:'Pattern (default: Noise_NK...)',
+  bh_mode:'Backhaul core (SMUX, behind nginx/443):',bh_on:'backhaul on',bh_off:'backhaul off',bh_node_on:'this node → backhaul',bh_node_off:'this node → ws',
+  t_bh_iran:'Enable backhaul (Iran side)',l_bh_port:'Internal 127.0.0.1 port (e.g. 3080)',l_bh_tr_srv:'Server transport (no TLS)',l_bh_prof:'Mux profile (must match on both sides)',
+  t_bh_node:'Enable backhaul (node side)',l_bh_domain:'Iran domain (same 443 domain)',l_bh_token:'Shared token (from "Show")',l_bh_tr_cli:'Client transport (TLS)',
   direct_mode:'Direct-IP (header routing, no TLS):',direct_on:'direct on',direct_off:'direct off',
   t_direct_iran:'Enable direct-IP (Iran side)',l_direct_port:'HTTP port (e.g. 8081)',l_direct_header:'Header name (e.g. X-Cdn-Id)',
 
@@ -2197,6 +2288,12 @@ function renderIran(n,ov){
    <button class="gh" onclick="run('${n}','noise_show')">${t('show_key')}</button>
    <button class="s" onclick="noiseNode('${n}','on')">${t('noise_node_on')}</button>
    <button class="s" onclick="noiseNode('${n}','off')">${t('noise_node_off')}</button></div>
+   <div class="btns" style="margin-top:6px"><span class="sub">${t('bh_mode')}</span>
+   <button class="g" onclick="bhOnIran('${n}')">${t('bh_on')}</button>
+   <button class="r" onclick="run('${n}','backhaul_off')">${t('bh_off')}</button>
+   <button class="gh" onclick="run('${n}','backhaul_show')">${t('show_key')}</button>
+   <button class="s" onclick="bhNode('${n}','on')">${t('bh_node_on')}</button>
+   <button class="s" onclick="bhNode('${n}','off')">${t('bh_node_off')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('direct_mode')}</span>
    <button class="g" onclick="directOnIran('${n}')">${t('direct_on')}</button>
    <button class="r" onclick="run('${n}','direct_off')">${t('direct_off')}</button>
@@ -2264,6 +2361,9 @@ function renderNode(n,ov){
    <div class="btns" style="margin-top:6px"><span class="sub">${t('noise_mode')}</span>
    <button class="g" onclick="noiseOnNode('${n}')">${t('noise_on')}</button>
    <button class="r" onclick="run('${n}','noise_off')">${t('noise_off')}</button></div>
+   <div class="btns" style="margin-top:6px"><span class="sub">${t('bh_mode')}</span>
+   <button class="g" onclick="bhOnNode('${n}')">${t('bh_on')}</button>
+   <button class="r" onclick="run('${n}','backhaul_off')">${t('bh_off')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('watchdog')}</span>
    <button class="g" onclick="wdOn('${n}')">${t('wd_on')}</button>
    <button class="r" onclick="run('${n}','watchdog_off')">${t('wd_off')}</button>
@@ -2914,6 +3014,52 @@ function noiseOnNode(n){formModal(t('t_noise_node'),noiseNodeFields(),
    if(box){const b=document.createElement('button');b.className='s';b.textContent='↻';
      b.title=t('l_autofill');b.onclick=e=>{e.preventDefault();noiseAutofill(sel.value);};box.appendChild(b);}
    noiseAutofill(sel.value);
+ }}
+
+// ---- backhaul (core-e SMUX posht-e nginx/443) ----
+// samt-e Iran transport-e BEDOON-e TLS migirad (nginx TLS ra terminate mikonad),
+// samt-e node transport-e TLS-dar — in do amdan yeki nistand.
+const BH_SRV_TR=[{v:'wsmux',t:'wsmux (mux)'},{v:'ws',t:'ws (bedoon mux)'}];
+const BH_CLI_TR=[{v:'wssmux',t:'wssmux (mux)'},{v:'wss',t:'wss (bedoon mux)'}];
+function bhOnIran(n){formModal(t('t_bh_iran'),[
+  {id:'port',label:t('l_bh_port'),val:'3080',req:1},
+  {id:'transport',label:t('l_bh_tr_srv'),type:'select',val:'wsmux',opts:BH_SRV_TR},
+  {id:'profile',label:t('l_bh_prof'),type:'select',val:'balanced',opts:PROF}],
+  v=>{closeModal();run(n,'backhaul_on',{port:v.port,transport:v.transport||'wsmux',profile:v.profile||'balanced'});});}
+function bhNode(n,act){formModal(t(act==='on'?'bh_node_on':'bh_node_off'),[
+  {id:'name',label:t('c_name'),req:1}],
+  v=>{closeModal();run(n,act==='on'?'backhaul_node_on':'backhaul_node_off',{name:v.name});});}
+// autofill-e backhaul: az server Iran domain+token+transport+profile ra migirad ta token dasti copy nashavad.
+async function bhAutofill(iranName){
+ if(!iranName){return;}
+ toast(t('autofilling'));
+ const {j}=await api('GET','api/servers/'+iranName+'/backhaulconnect');
+ if(!j||!j.ok){toast(t('autofail'));return;}
+ if($('f_domain'))$('f_domain').value=j.domain||'';
+ if($('f_token'))$('f_token').value=j.token||'';
+ if($('f_transport')&&j.transport)$('f_transport').value=j.transport;
+ if($('f_profile')&&j.profile)$('f_profile').value=j.profile;
+ toast(t('autofilled'));
+}
+function bhNodeFields(){
+ const irs=iranServers();
+ const f=[];
+ if(irs.length){f.push({id:'iran',label:t('l_autofill'),type:'select',val:irs[0].name,
+   opts:irs.map(s=>({v:s.name,t:s.name+' ('+s.host+')'}))});}
+ f.push({id:'domain',label:t('l_bh_domain'),ph:'example.com',req:1});
+ f.push({id:'token',label:t('l_bh_token'),req:1});
+ f.push({id:'transport',label:t('l_bh_tr_cli'),type:'select',val:'wssmux',opts:BH_CLI_TR});
+ f.push({id:'profile',label:t('l_bh_prof'),type:'select',val:'balanced',opts:PROF});
+ return f;
+}
+function bhOnNode(n){formModal(t('t_bh_node'),bhNodeFields(),
+  v=>{closeModal();run(n,'backhaul_on',{domain:v.domain,token:v.token,transport:v.transport||'wssmux',profile:v.profile||'balanced'});});
+ const sel=$('f_iran');
+ if(sel){sel.onchange=()=>bhAutofill(sel.value);
+   const box=sel.closest('.row');
+   if(box){const b=document.createElement('button');b.className='s';b.textContent='↻';
+     b.title=t('l_autofill');b.onclick=e=>{e.preventDefault();bhAutofill(sel.value);};box.appendChild(b);}
+   bhAutofill(sel.value);
  }}
 
 // list-e serverhaye Iran (baraye autofill-e KCP)

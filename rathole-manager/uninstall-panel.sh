@@ -35,6 +35,10 @@ rm -f /etc/systemd/system/rathole-server.service
 # instans-e noise (agar sakhte shode bood)
 systemctl disable --now rathole-noise 2>/dev/null || true
 rm -f /etc/systemd/system/rathole-noise.service /etc/rathole/noise-server.toml
+# core-e backhaul (agar roshan shode bood)
+systemctl disable --now rathole-backhaul-server 2>/dev/null || true
+rm -f /etc/systemd/system/rathole-backhaul-server.service /etc/rathole/backhaul-server.toml
+rm -f /usr/local/bin/backhaul-server
 systemctl daemon-reload 2>/dev/null || true
 
 # ---------- riastvr config nginx ----------

@@ -9,6 +9,27 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.6.0-beta.1] - 2026-07-26
+
+### Added
+- **core-e backhaul (SMUX) — carrier-e panjom:** `ratholectl backhaul <on [port] [transport] [profile]|off|node <name> on|off|status|show>` va `ratholenode backhaul <on <domain> <token> [transport] [profile]|off|status>`. yek core-e joda-ye Go (`Musixal/Backhaul`) kenar-e rathole ke chand connection-e karbar ra ba SMUX rooye yek stream mux mikonad — baraye link-haye sholoogh/lossy ke rathole mux nadarad. `backhaul-server` rooye `127.0.0.1:<backhaul_port>` (pishfarz 3080) gush midahad va nginx masirhaye **hardcode-shode** `/channel` (control) va `/tunnel` (data) ra rooye haman 443 be an proxy mikonad — pas **tak-port/tak-domain hefz mishavad**.
+- **`common.sh`:** `install_backhaul` (download ba halqe-ye mirror-e ghproxy), `backhaul_mux_profile` (balanced/lossy/aggressive), `backhaul_client_transport` (naghshe-ye server→client).
+- **kanal-e beta dar updater:** `ratholectl update beta` / `ratholenode update beta` va `RATHOLE_RELEASE=beta` dar `install.sh`. chon masir-e `releases/latest/download` pre-release ha ra NADIDE migirad, `resolve_beta_tag()` akharin tag-e beta ra az `releases.atom` (az tarigh-e mirror-haye ghproxy، bedoon niaz be jq) peyda mikonad.
+- **hub (hub.py):** action-haye `backhaul_on/off/node_on/node_off/status/show` ba argv-list va etebarsanji-ye regex (`RE_BH_SRV`, `RE_BH_CLI`, `RE_BH_TOK`), endpoint-e `GET /api/servers/<name>/backhaulconnect` baraye autofill-e domain+token, i18n-e fa/en va dokme-haye UI.
+- **`ratholectl status`:** port va service-e backhaul dar khoruji-ye adami va `--json`; sotun-e `TRANSPORT` dar jadval-e node-ha.
+- **adaptive (ratholenode):** case-e `backhaul` dar `adaptive_run_probe` — probe be `/channel` ba header-e `Authorization: Bearer <token>` (bedoon token backhaul ba 401 rad mikonad va failover-e eshtebah rokh midahad). `adaptive_probe_ws_tls` yek parameter-e ekhtiari-ye header gereft (sazgar ba ghabl).
+- **release.yml:** tag-haye `-beta`/`-rc`/`-alpha` khodkar be onvan-e **prerelease** montasher mishavand ta `releases/latest/download` hamchenan be noskhe-ye stable eshare konad.
+
+### Fixed
+- **tadakhol-e bind:** node-e backhaul hamzaman dar `server.toml` va `ports`-e backhaul mimand va `rathole-server` va `backhaul-server` har do `127.0.0.1:<node.port>` ra bind mikardand (dovomi bala nemiamad). `backhaul` hala yek meghdar-e `.transport` ast (mesl-e `noise`) va `gen_server_toml` node-haye `noise|backhaul` ra rad mikonad. samt-e node ham `rathole-client` motevaghef va disable mishavad.
+- **`ports` ba format-e ghalat:** `"127.0.0.1:<port>"` be `"127.0.0.1:<iran_port>=<node_inbound_port>"` eslah shod (service-e `_api` ham pushesh dade shod) — vagarna be port-e eshtebah rooye node forward mishod.
+- **transport-e do taraf:** server hala faghat variant-e bedoon-e TLS (`ws`/`wsmux`) va client faghat variant-e TLS-dar (`wss`/`wssmux`) ra mipazirad — haman invariant-e rathole (TLS faghat rooye nginx). ghablan yek transport be har do taraf dade mishod ke dar har entekhabi yek taraf ra mishekast.
+- **unit-e systemd:** `ExecStart` config ra be sooratِ positional pass midad vali backhaul `-c <path>` mikhahad — service ba `FATAL: Usage: ... -c` mimord. (dar tst ba binary-e vagheai peyda shod.)
+- **`ratholenode backhaul` ghabl-e seda zadan nabud:** be `main()` va `usage()` vasl shod؛ `systemctl enable` masir-e file ra be jaye naam-e service pass midad.
+- **`BH_PROFILE`** rooye node zakhire nemishod (hamishe `balanced` migereft) — hala `env_set` mishavad va argument migirad.
+- **`noise off`** ba `del(.nodes[].transport)` transport-e node-haye backhaul ra ham pak mikard؛ hala entekhabi ast. gard-haye motaghabel bein `noise node on` va `backhaul node on` ezafe shod.
+- **CRLF dar `ports`:** jq-e vindozi CRLF midahad va `\r` daakhel-e array-e `ports` TOML ra namotabar mikard.
+
 ## [1.5.0] - 2026-07-24
 
 ### Added

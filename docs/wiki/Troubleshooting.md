@@ -18,6 +18,29 @@ sudo journalctl -u rathole-client -n 50 --no-pager
 sudo ratholenode status
 ```
 
+### ۳. عیب‌یابی هسته‌ی backhaul:
+```bash
+# سمت ایران
+sudo ratholectl backhaul status
+sudo journalctl -u rathole-backhaul-server -n 50 --no-pager
+```
+
+```bash
+# سمت نود
+sudo ratholenode backhaul status
+sudo journalctl -u rathole-backhaul-client -n 50 --no-pager
+```
+
+خطاهای رایج:
+
+| نشانه | علت | راه‌حل |
+|---|---|---|
+| سرویس بالا نمی‌آید، لاگ `Usage: ... -c` | نسخه‌ی قدیمی‌تر یونیت (بدون `-c`) | آپدیت به ≥ v1.6.0 |
+| `control channel` مدام قطع/وصل می‌شود | دو کلاینت با یک توکن، یا profile ناهماهنگ | فقط یک نود به ازای هر توکن؛ profile دو طرف را یکی کنید |
+| کلاینت وصل نمی‌شود | transport اشتباه | سرور `ws`/`wsmux` و نود `wss`/`wssmux` — عمداً متفاوت‌اند |
+| نود روی backhaul است ولی `rathole-client` خطا می‌دهد | طبیعی است | سرویس عمداً متوقف می‌شود؛ backhaul جایگزین تونل است |
+| پورت نود bind نمی‌شود | نود هنوز در `server.toml` مانده | `ratholectl backhaul node <name> on` را بزنید و `regen` کنید |
+
 ---
 
 ## 📦 سیستم بک‌آپ و رول‌بک خودکار (Automatic Rollback)

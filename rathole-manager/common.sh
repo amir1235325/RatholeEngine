@@ -3,7 +3,7 @@
 
 # noskhe-ye rathole-manager (panel/node/hub). moqe-e release in adad ba tag hamahang mishavad.
 # package.sh/CI mitavanad in ra be tag-e vaghei stamp konad; agar dast taghir dadi، bedoon 'v' bezar.
-MANAGER_VERSION="1.5.1"
+MANAGER_VERSION="1.6.0-beta.1"
 
 c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
 c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
@@ -14,6 +14,28 @@ err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
 die(){ err "$*"; exit 1; }
 ask_yn(){ local p="$1" a; read -rp "$p [y/N]: " a; [[ "$a" =~ ^[Yy]$ ]]; }
 need_root(){ [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad (sudo)."; }
+
+# mirror-haye ghproxy baraye dor-zadan-e filtering-e Iran (hamsan-e install.sh/install-panel.sh).
+RTH_MIRRORS=("" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/")
+
+# akharin tag-e pre-release (beta/rc/alpha) ra peyda mikonad. $1 = slug-e owner/repo.
+# CHERA atom va na API: masir-e `releases/latest/download` dar GitHub pre-release ha ra
+# NADIDE migirad, pas baraye beta bayad tag-e daghigh ra bedanim. api.github.com az mirror-haye
+# ghproxy obur nemikonad vali github.com/<slug>/releases.atom mikonad — va atom ham be jq niaz
+# nadarad (dar node-e taze-nasb momken ast jq nabashad). tartib-e atom: jadidtarin aval.
+resolve_beta_tag(){
+  local gh="$1" m out tag
+  for m in "${RTH_MIRRORS[@]}"; do
+    out="$(curl -fsSL --connect-timeout 15 --retry 1 "${m}https://github.com/${gh}/releases.atom" 2>/dev/null)" || continue
+    tag="$(printf '%s' "$out" \
+      | grep -oE 'releases/tag/v[0-9A-Za-z._-]+' \
+      | sed 's#.*releases/tag/##' \
+      | grep -E -- '-(beta|rc|alpha)' \
+      | head -n1)"
+    [ -n "$tag" ] && { printf '%s\n' "$tag"; return 0; }
+  done
+  return 1
+}
 
 # neveshtan-e amn-e in-place ba lock-e sidecar (hefz inode baraye hot-reload-e rathole).
 # $1 = file-e movaqqat (generated); $2 = file-e live (masir-e vaghei config).
@@ -65,6 +87,52 @@ install_kcptun(){
   install -m755 "$tmp/${role}_linux_${arch}" "$bin" || { rm -rf "$tmp"; die "nasb bainri kcptun shekast khord."; }
   rm -rf "$tmp"
   log "kcptun-$role nasb shod: $bin"
+}
+
+# profile mux-e backhaul (SMUX) → "mux_con mux_version mux_framesize mux_recievebuffer mux_streambuffer connection_pool"
+# HAR DO taraf (server/client) bayad haman profile ra dashte bashand ta parametrhaye SMUX yeksan bemanad.
+# nokte: 'mux_con' faghat samt-e server mani darad va 'connection_pool' faghat samt-e client —
+# har taraf field-e marbut be khodash ra minevisad va baghi ra dor mirizad.
+backhaul_mux_profile(){
+  case "${1:-balanced}" in
+    balanced)   echo "8 1 32768 4194304 65536 8" ;;
+    lossy)      echo "4 1 32768 4194304 65536 6" ;;
+    aggressive) echo "16 2 65536 8388608 131072 12" ;;
+    *) return 1 ;;
+  esac
+}
+
+# transport-e client az roo-ye transport-e server: TLS FAGHAT ru-ye nginx terminate mishavad,
+# pas server hamishe variant-e bedoon-e TLS ast (ws/wsmux) va client variant-e TLS-dar (wss/wssmux)
+# ra be nginx:443 mizanad — daghighan haman invariant-e rathole (server tls=false, client tls=true).
+backhaul_client_transport(){
+  case "${1:-wsmux}" in
+    ws)    echo "wss" ;;
+    wsmux) echo "wssmux" ;;
+    *) return 1 ;;
+  esac
+}
+
+# nasb backhaul (server|client). binary-e Go tak-fail ast; role faghat dar esm-e khoruji tafavot darad.
+# ba halqe-ye mirror ta az dakhel Iran (filtr/thrim github) ham javab begirad — haman elgo-ye install-panel.
+install_backhaul(){
+  local role="$1" bin="/usr/local/bin/backhaul-$1" ver="${BACKHAUL_VER:-v0.6.5}" arch tmp ok=0 m
+  [ -x "$bin" ] && return 0
+  case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) die "memari poshtibani nemishavad." ;; esac
+  command -v curl >/dev/null 2>&1 || die "curl lazem ast."
+  log "download backhaul ${ver} ($role)..."
+  tmp="$(mktemp -d)"
+  for m in "" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/"; do
+    if curl -fsSL --connect-timeout 20 --retry 2 "${m}https://github.com/Musixal/Backhaul/releases/download/${ver}/backhaul_linux_${arch}.tar.gz" -o "$tmp/bh.tgz" 2>/dev/null; then ok=1; break; fi
+    warn "in mnba javab nadad, mnba-ye badi..."
+  done
+  [ "$ok" -eq 1 ] || { rm -rf "$tmp"; die "download backhaul az hame-ye mnaba shekast khord."; }
+  tar -xzf "$tmp/bh.tgz" -C "$tmp" || { rm -rf "$tmp"; die "baz kardan arshiv backhaul shekast khord."; }
+  local src; src="$(find "$tmp" -maxdepth 2 -type f -name 'backhaul*' ! -name '*.tar.gz' | head -n1)"
+  [ -n "$src" ] || { rm -rf "$tmp"; die "binary-e backhaul dar arshiv peyda nashod."; }
+  install -m755 "$src" "$bin" || { rm -rf "$tmp"; die "nasb binary backhaul shekast khord."; }
+  rm -rf "$tmp"
+  log "backhaul-$role nasb shod: $bin"
 }
 
 # tanzimat sysctl (BBR + file limits + conntrack)

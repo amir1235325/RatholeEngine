@@ -83,13 +83,13 @@ snapshot_paths(){ # naghsh-ha ra migirad, masir-haye mojood ra (yekta) chap miko
           echo /etc/nginx/conf.d/rathole.conf
           echo /etc/nginx/conf.d/rathole-upgrade-map.conf
           echo /etc/nginx/stream.d/rathole-stream.conf
-          _units_glob 'rathole-server.service' 'rathole-noise.service' 'rathole-kcp-server.service' 'rathole-panel-fakeweb.service'
+          _units_glob 'rathole-server.service' 'rathole-noise.service' 'rathole-backhaul-server.service' 'rathole-kcp-server.service' 'rathole-panel-fakeweb.service'
           ;;
         node)
           echo /usr/local/bin/ratholenode
           echo /usr/local/share/rathole/common.sh
           echo /etc/rathole
-          _units_glob 'rathole-client.service' 'rathole-client@*.service' 'rathole-kcp-client.service' 'rathole-kcp-up-*.service'
+          _units_glob 'rathole-client.service' 'rathole-client@*.service' 'rathole-backhaul-client.service' 'rathole-kcp-client.service' 'rathole-kcp-up-*.service'
           ;;
         hub)
           echo /opt/ratholehub
@@ -194,8 +194,10 @@ restart_services(){
     case "$role" in
       panel) systemctl restart rathole-server 2>/dev/null || true
              systemctl list-unit-files 2>/dev/null | grep -q '^rathole-noise\.service' && systemctl restart rathole-noise 2>/dev/null || true
+             systemctl list-unit-files 2>/dev/null | grep -q '^rathole-backhaul-server\.service' && systemctl restart rathole-backhaul-server 2>/dev/null || true
              command -v nginx >/dev/null 2>&1 && { nginx -t >/dev/null 2>&1 && { systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true; }; } ;;
-      node) systemctl restart rathole-client 2>/dev/null || true ;;
+      node) systemctl restart rathole-client 2>/dev/null || true
+            systemctl list-unit-files 2>/dev/null | grep -q '^rathole-backhaul-client\.service' && systemctl restart rathole-backhaul-client 2>/dev/null || true ;;
       hub)  systemctl restart ratholehub 2>/dev/null || true ;;
     esac
   done

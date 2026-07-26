@@ -128,9 +128,21 @@ jobs:
             echo "RH_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # tag-haye -beta/-rc/-alpha bayad prerelease bashand، vagarna GitHub anha ra "latest"
+      # midanad va masir-e releases/latest/download (ke install.sh mizanad) be noskhe-ye
+      # azmayeshi eshare mikonad — yani hameye nasb-haye stable beta migirand.
+      - name: Detect pre-release channel
+        id: chan
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            *-beta*|*-rc*|*-alpha*) echo "pre=true"  >> "$GITHUB_OUTPUT"; echo "kanal: PRE-RELEASE" ;;
+            *)                      echo "pre=false" >> "$GITHUB_OUTPUT"; echo "kanal: stable" ;;
+          esac
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.chan.outputs.pre == 'true' }}
           name: ${{ steps.notes.outputs.title }}
           body: ${{ steps.notes.outputs.found == '1' && steps.notes.outputs.body || '' }}
           files: |
