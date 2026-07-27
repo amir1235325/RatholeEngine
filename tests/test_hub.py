@@ -7,6 +7,10 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HUB_PATH = os.path.join(REPO_ROOT, "rathole-manager", "ratholehub", "hub.py")
 
 def _load_hub():
+    hub_dir = os.path.dirname(HUB_PATH)
+    # hub.py doostat module-haye hamsaye (mesle hubcmds) ra ba sys.path-e khod peida konad
+    if hub_dir not in sys.path:
+        sys.path.insert(0, hub_dir)
     spec = importlib.util.spec_from_file_location("hub", HUB_PATH)
     mod = importlib.util.module_from_spec(spec)
     # stub environment so hub doesn't try to read config files
