@@ -119,7 +119,9 @@ echo "baad az kpi, tst:  ssh -i $KEY root@<server_ip> 'ratholenode show || ratho
 if [ -z "${RATHOLECTL_HUB_FROM_CTL:-}" ] && command -v ratholectl >/dev/null 2>&1 && [ -f /etc/rathole-manager/state.json ]; then
   if ratholectl hub on "$PORT" >/dev/null 2>&1; then
     DOMAIN="$(sed -n 's/.*"domain"[^"]*"\([^"]*\)".*/\1/p' /etc/rathole-manager/state.json | head -1)"
-    log "panel khodkar psht nginx gharar grft: https://${DOMAIN:-<domain>}/hub/"
+    HUB_SEG="$(sed -n 's/.*"hub_path"[^"]*"\([^"]*\)".*/\1/p' /etc/rathole-manager/state.json | head -1)"
+    HUB_SEG="${HUB_SEG:-hub}"
+    log "panel khodkar psht nginx gharar grft: https://${DOMAIN:-<domain>}/${HUB_SEG}/"
     warn "chvn panel hala amvmi ast, motmaen shv ramz ghvi gzashti."
   else
     warn "faalsazi khodkar nginx nshd; dasti: ratholectl hub on $PORT"
@@ -134,8 +136,9 @@ echo "  ssh -L ${PORT}:127.0.0.1:${PORT} root@${IP:-<SERVER_IP>}"
 echo "  sps mrvrgr:  http://localhost:${PORT}"
 echo
 echo "$(c_y 'ya psht nginx zir haman damnh (ekhtiari):') in blak ra dakhl server{} damnhat bgzar:"
+HUB_SNIP_SEG="${HUB_PATH:-hub}"
 cat <<NGINX
-  location /hub/ {
+  location /${HUB_SNIP_SEG}/ {
       proxy_pass http://127.0.0.1:${PORT}/;
       proxy_set_header Host \$host;
       proxy_set_header X-Real-IP \$remote_addr;

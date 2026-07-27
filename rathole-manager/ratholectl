@@ -93,6 +93,17 @@ ensure_control_path(){
   printf '%s\n' "$p"
 }
 
+# ---------- masir-haye qabl-e tanzim (sub / hub) ----------
+# elaghi: 'sub' ya '/sub' ya '/sub/' → tkrar-shavande 'sub' (bedoon slash). pishfarz: moge'e pishvand.
+normalize_path_seg(){
+  local seg="${1#/}"; seg="${seg%/}"
+  echo "$seg" | grep -qE '^[A-Za-z0-9_-]{1,40}$' || die "masir '$1' namotabar ast (faghat harf/adad/_/-, bedoon slash)."
+  printf '%s\n' "$seg"
+}
+# sub_path/hub_path ra az state mikhanad; pishfarz 'sub'/'hub'
+sub_path_seg(){  local p; p="$(jq -r '.sub_path // "sub"'  "$STATE" 2>/dev/null)"; case "$p" in ''|null) p=sub ;; esac; printf '%s\n' "$p"; }
+hub_path_seg(){  local p; p="$(jq -r '.hub_path // "hub"'  "$STATE" 2>/dev/null)"; case "$p" in ''|null) p=hub ;; esac; printf '%s\n' "$p"; }
+
 # ---------- tvlid keypair-e noise (X25519) baraye transport-e ramznegari-shode ----------
 # rathole --genkey do khat mide: "Private Key:" va "Public Key:" (base64). faghat agar hanooz set nashode.
 # NOTE: format-e daghigh-e khoruji-ye 'rathole --genkey' bayad ba binary-ye vaghei tayid shavad;
@@ -282,8 +293,14 @@ next_port(){ # $1=field (port|api_local_port) $2=start
 
 # ---------- dstvr add ----------
 # nam-haye rezerv-shode ke ba entry-haye sabet-e map-e nginx tadakhol darand
-# (masalan 'sub' ke '~^/sub/' ra shadow mikonad). in-ha nabayad name-e node bashand.
-is_reserved_name(){ case "$1" in sub|default) return 0 ;; *) return 1 ;; esac; }
+# (masalan 'sub' ke '~^/<sub_path>/' ra shadow mikonad). in-ha nabayad name-e node bashand.
+# hub/channel/tunnel ham rezerv hastand: hub masir-e panel (pishfarz hub amma qabl-e taghir
+# ba `set hub-path`) va channel/tunnel masir-haye sabet-e backhaul ke mitoavan shadow shavand.
+is_reserved_name(){
+  local n="$1" sp hp
+  sp="$(sub_path_seg)"; hp="$(hub_path_seg)"
+  case "$n" in default|hub|channel|tunnel|"$sp"|"$hp") return 0 ;; *) return 1 ;; esac
+}
 
 cmd_add(){
   need_root; need_bin jq; ensure_state
@@ -507,10 +524,11 @@ gen_backhaul_server_toml(){
 
 # ---------- tvlid config nginx ----------
 gen_nginx_conf(){
-  local domain cert_fc cert_key ctrl fake sub
+  local domain cert_fc cert_key ctrl fake sub sub_seg
   domain="$(s_get '.domain')";       cert_fc="$(s_get '.cert_fullchain')"
   cert_key="$(s_get '.cert_key')";   ctrl="$(s_get '.control_port')"
   fake="$(s_get '.fake_port')";      sub="$(s_get '.sub_port')"
+  sub_seg="$(sub_path_seg)"
   # mghavmsazi: agar mghdari khali/null bvd, pishfarz amn bgzar ta map motabar bmand
   case "$ctrl" in ''|null) ctrl=2333 ;; esac
   case "$fake" in ''|null) fake=8080 ;; esac
@@ -533,12 +551,13 @@ gen_nginx_conf(){
   fi
 
   # location ekhtiari baraye panel web (paidar dar brabr regen)
-  local hub_port hub_block=""
+  local hub_port hub_seg hub_block=""
   hub_port="$(jq -r '.hub_port // empty' "$STATE" 2>/dev/null)"
+  hub_seg="$(hub_path_seg)"
   if [ -n "$hub_port" ] && [ "$hub_port" != null ]; then
     hub_block="$(cat <<HB
 
-    location /hub/ {
+    location /${hub_seg}/ {
         proxy_pass http://127.0.0.1:${hub_port}/;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -622,7 +641,7 @@ PXB
     echo "# masir(path) dita -> port lvkal rathole"
     echo "map \$uri \$backend_port {"
     echo "    default      ${fake};"
-    echo "    ~^/sub/      ${sub};"
+    echo "    ~^/${sub_seg}/      ${sub};"
     jq -r '.nodes[] | select(.sni == null) | [.name,(.port|tostring)] | @tsv' "$STATE" |
     while IFS=$'\t' read -r n p; do
       printf '    "~^/%s($|/)"   %s;\n' "$n" "$p"
@@ -1045,7 +1064,7 @@ state_set(){ # $1=jqpath $2=value $3=type(str|num)
 cmd_set(){
   need_root; need_bin jq; ensure_state
   local key="${1:-}" val="${2:-}"
-  [ -n "$key" ] && [ -n "$val" ] || die "estefade: ratholectl set <domain|fullchain|key|nginx-conf|fake-port|sub-port|control-port> <value>"
+  [ -n "$key" ] && [ -n "$val" ] || die "estefade: ratholectl set <domain|fullchain|key|nginx-conf|fake-port|sub-port|control-port|sub-path|hub-path> <value>"
   case "$key" in
     domain)        state_set '.domain' "$val" str ;;
     fullchain)     state_set '.cert_fullchain' "$val" str ;;
@@ -1055,6 +1074,8 @@ cmd_set(){
     sub-port)      state_set '.sub_port' "$val" num ;;
     control-port)  state_set '.control_port' "$val" num ;;
     control-path) state_set '.control_path' "$val" str ;;
+    sub-path)      state_set '.sub_path' "$(normalize_path_seg "$val")" str ;;
+    hub-path)      state_set '.hub_path' "$(normalize_path_seg "$val")" str ;;
     *) die "kelid nashenakhte: $key" ;;
   esac
   log "tanzim shod: $key = $val"
@@ -1393,6 +1414,7 @@ cmd_status(){
       --argjson internal "${internal:-8443}" \
       --arg plain "${plain_port:-}" --arg direct "${direct_port:-}" --arg dhdr "$direct_header" \
       --arg hub "${hub_port:-}" --arg noise "${noise_port:-}" --arg backhaul "${bh_port:-}" \
+      --arg sub_path "$(sub_path_seg)" --arg hub_path "$(hub_path_seg)" \
       --arg cert_fc "$cert_fc" --arg cert_key "$cert_key" --arg cert_ok "$cert_ok" \
       --arg cert_exp "$cert_exp" --arg cert_ss "$cert_selfsigned" \
       --arg svc_server "$svc_server" --arg svc_nginx "$svc_nginx" --arg svc_noise "$svc_noise" \
@@ -1406,6 +1428,7 @@ cmd_status(){
                hub:(if $hub=="" then null else ($hub|tonumber) end),
                noise:(if $noise=="" then null else ($noise|tonumber) end),
                backhaul:(if $backhaul=="" then null else ($backhaul|tonumber) end)},
+        paths:{sub:$sub_path, hub:$hub_path},
         direct_header:$dhdr,
         cert:{fullchain:$cert_fc, key:$cert_key, exists:$cert_ok, expiry:$cert_exp, self_signed:$cert_ss},
         services:{rathole_server:$svc_server, nginx:$svc_nginx, nginx_config_ok:$nginx_ok, noise:$svc_noise, backhaul:$svc_bh},
@@ -1432,11 +1455,11 @@ cmd_status(){
   printf '  443       %s  vrvdi-ye asli (nginx TLS ya SNI)\n' "$([ "$svc_nginx" = yes ] && c_g '✓' || c_r '✗')"
   printf '  %-9s     kontrol-e rathole (127.0.0.1)\n' "$ctrl"
   printf '  %-9s     sait-e fik/panel (127.0.0.1)\n' "$fake"
-  printf '  %-9s     sabaskripshn (127.0.0.1)\n' "$sub"
+  printf '  %-9s     sabaskripshn (127.0.0.1, zir /%s/)\n' "$sub" "$(sub_path_seg)"
   [ "$sni_count" -gt 0 ] && printf '  %-9s     panel-e dakheli (L7 posht-e SNI)\n' "$internal"
   [ -n "$plain_port" ]  && printf '  %-9s     plain (websocket bedoon TLS)\n' "$plain_port"
   [ -n "$direct_port" ] && printf '  %-9s     direct-IP (header: %s)\n' "$direct_port" "$direct_header"
-  [ -n "$hub_port" ]    && printf '  %-9s     hub (127.0.0.1, zir /hub/)\n' "$hub_port"
+  [ -n "$hub_port" ]    && printf '  %-9s     hub (127.0.0.1, zir /%s/)\n' "$hub_port" "$(hub_path_seg)"
   [ -n "$noise_port" ]  && printf '  %-9s     noise (TCP-e omomi, ramznegari-shode)\n' "$noise_port"
   [ -n "$bh_port" ]     && printf '  %-9s     backhaul (127.0.0.1, SMUX az nginx/443)\n' "$bh_port"
   echo
@@ -1923,13 +1946,13 @@ cmd_hub(){
       systemctl is-active --quiet ratholehub 2>/dev/null || systemctl start ratholehub 2>/dev/null || true
       systemctl is-active --quiet ratholehub 2>/dev/null || warn "service ratholehub bala nayamad! bebin: journalctl -u ratholehub -n 30"
       state_set '.hub_port' "$port" num
-      log "panel psht nginx faal shod: https://$(s_get '.domain')/hub/  →  127.0.0.1:$port"
+      log "panel psht nginx faal shod: https://$(s_get '.domain')/$(hub_path_seg)/  →  127.0.0.1:$port"
       warn "panel hala amvmi ast; ramz ghvi rooye hab bgzar."
       regenerate
       ;;
     off)
       local tmp; tmp="$(mktemp)"; jq 'del(.hub_port)' "$STATE" > "$tmp" && mv "$tmp" "$STATE"
-      log "panel az nginx hazf shod (location /hub/ brdashth shod)."
+      log "panel az nginx hazf shod (location /$(hub_path_seg)/ brdashth shod)."
       if systemctl is-active --quiet ratholehub 2>/dev/null; then
         warn "service ratholehub hamchenan roshan ast (127.0.0.1; dstrsi fght ba SSH-forward). khamoosh: systemctl stop ratholehub"
       fi
@@ -1937,7 +1960,7 @@ cmd_hub(){
       ;;
     status)
       local hp lp; hp="$(jq -r '.hub_port // empty' "$STATE" 2>/dev/null)"
-      if [ -n "$hp" ]; then echo "panel psht nginx: $(c_g "https://$(s_get '.domain')/hub/")  (port dakhli $hp)"
+      if [ -n "$hp" ]; then echo "panel psht nginx: $(c_g "https://$(s_get '.domain')/$(hub_path_seg)/")  (port dakhli $hp)"
       else echo "panel psht nginx: $(c_y 'gheyre-faal')  (dstrsi fght ba SSH-forward)"; fi
       if hub_installed; then
         lp="$(hub_listen_port)"
@@ -2532,7 +2555,7 @@ dstvrha:
   add <name> <inbound> [api]   afzoodan node (api = port mdirit ekhtiari)
   rm <name>                    hazf node
   ls                           list nodeha
-  set <key> <value>            taghir tanzimat srasri (domain/fullchain/key/nginx-conf/fake-port/sub-port/control-port)
+  set <key> <value>            taghir tanzimat srasri (domain/fullchain/key/nginx-conf/fake-port/sub-port/control-port/sub-path/hub-path)
   info                         namayesh damnh/gvahi/enghza va damnhhai SNI (baraye panel)
   status [--json]              dashboard-e kamel: port-ha/halat-ha/service-ha/node-ha (mesl-e panel-e VPN)
   paths                        namayesh masir-e hameye config-ha va file-ha (ba alamat-e vojood)
@@ -2549,7 +2572,7 @@ dstvrha:
   doctor                       barresi slamt system va tmaiz sait fik/rthvl
   tune                         eemal BBR + limithaye system/nginx (rfa 502 zir burst)
   fakeweb <start|stop|rm|status> [port]   sait fik pishfarz rooye fake_port (rfa 502 rooye / dar srvrhai rlh)
-  hub <on [port]|off|status>   panel web psht nginx zir haman damnh (/hub/); bar-e aval hub ra khodkar nasb mikonad, baad faghat port avaz mikonad
+  hub <on [port]|off|status>   panel web psht nginx zir haman damnh (masir pishfarz /hub/ — ba `set hub-path` avaz mishavad); bar-e aval hub ra khodkar nasb mikonad, baad faghat port avaz mikonad
   kcp <on [port] [profile]|off|status|show>   tunnel UDP+FEC ba estetar (port 443=QUIC; profile: balanced/lossy/aggressive)
   plain <on [port]|off|status|show>   tunnel-e websocket bedoon-e TLS (listener HTTP rooye port jda, masalan 8880)
   noise <on [port]|off|node <name> on|off|status|show>   tunnel-e ramznegari-shode (Noise) rooye instans-e dovom (bedoon TLS/cert, port omomi masalan 2334)

@@ -940,6 +940,10 @@ const PORT_EDITABLE=[
  {key:'sub-port',     path:'sub',      ph:'2096'},
  {key:'control-port', path:'control',  ph:'2333'},
 ];
+const PATH_EDITABLE=[
+ {key:'sub-path', path:'sub', ph:'sub'},
+ {key:'hub-path', path:'hub', ph:'hub'},
+];
 const PORT_READONLY=[
  {path:'internal', k:'p_internal'},
  {path:'hub',      k:'p_hub'},
@@ -967,6 +971,7 @@ async function dtLoadPorts(n){
    await loadOv(n);
  }
  const ov=OVS[n]||{}; const ports=(ov.status&&ov.status.ports)||{};
+ const paths=(ov.status&&ov.status.paths)||{};
  let x='';
  PORT_EDITABLE.forEach(p=>{
   const cur=ports[p.path];
@@ -974,10 +979,28 @@ async function dtLoadPorts(n){
    + `<input id="pt_${p.path}" value="${cur==null?'':h(String(cur))}" placeholder="${p.ph}" style="max-width:110px">`
    + `<button class="g" onclick="dtSetPort('${n}','${p.key}','pt_${p.path}')">${t('save')}</button></div>`;
  });
+ // masir-ha (path segment): sub/hub — yek kalame sade bedoon slash
+ x+=`<div class="sub" style="margin:10px 0 4px">${h(t('paths_sec'))}</div>`;
+ PATH_EDITABLE.forEach(p=>{
+  const cur=paths[p.path]||p.ph;
+  x+=`<div class="row"><label>${h(t('pth_'+p.path))}</label>`
+   + `<span class="sub mono" style="align-self:center">/</span>`
+   + `<input id="pth_${p.path}" value="${h(String(cur))}" placeholder="${p.ph}" style="max-width:140px">`
+   + `<button class="g" onclick="dtSetPath('${n}','${p.key}','pth_${p.path}')">${t('save')}</button></div>`;
+ });
  const ro=PORT_READONLY.filter(p=>ports[p.path]!=null)
    .map(p=>`${h(t(p.k))}: <b>${h(String(ports[p.path]))}</b>`).join(' · ');
  x+=`<div class="sub" style="margin-top:6px">${ro||t('ports_none')}</div>`;
  box.innerHTML=x;
+}
+
+// masir-ha faghat yek segment-e sade (harf/adad/_/-) — slash dar ratholectl ham rad mishavad.
+function dtSetPath(n,key,id){
+ const el=$(id); if(!el)return;
+ const v=(el.value||'').trim().replace(/^\/+|\/+$/g,'');
+ if(!/^[A-Za-z0-9_-]{1,40}$/.test(v)){toast(t('pth_bad'));return;}
+ closeModal();
+ run(n,'set_config',{key,value:v});
 }
 
 // ghabl az ersal tadakhol-e port ra check mikonim — nginx/rathole ba do sherkat rooye yek

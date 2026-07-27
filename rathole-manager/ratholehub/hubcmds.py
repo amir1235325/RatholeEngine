@@ -238,9 +238,17 @@ def build_iran_cmd(action, a):
     if action == "set_config":
         key = a.get("key", ""); val = str(a.get("value", ""))
         if key not in ("domain", "fullchain", "key", "nginx-conf",
-                       "fake-port", "sub-port", "control-port"): return None
+                       "fake-port", "sub-port", "control-port",
+                       "sub-path", "hub-path"): return None
         if key in ("fake-port", "sub-port", "control-port"):
             if not RE_PORT.match(val): return None
+        elif key in ("sub-path", "hub-path"):
+            # faghat yek segment-e sade (mesl 'subs' ya '/subs'); slash-haye atraf
+            # ghabl az ersal bardashte mishavand. segment-e rezerv niz dar ratholectl
+            # (is_reserved_name / normalize_path_seg) rad mishavad.
+            seg = val.strip("/")
+            if not RE_NAME.match(seg): return None
+            val = seg
         elif key in ("domain",):
             if not RE_HOST.match(val): return None
         else:
