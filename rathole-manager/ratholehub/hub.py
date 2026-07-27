@@ -1091,8 +1091,13 @@ class Handler(BaseHTTPRequestHandler):
             # backhaul/direct) ra yekja midahad — UI baraye safhe-ye tanzimat va check-e
             # tadakhol-e port be an niaz darad. shekast-e parse nabayad overview ra bekoshad.
             try:
-                ov["status"] = json.loads(R(["ratholectl", "status", "--json"]).get("out", "") or "{}")
-            except Exception:
+                raw = R(["ratholectl", "status", "--json"]).get("out", "") or "{}"
+                ov["status"] = json.loads(raw)
+            except Exception as e:
+                import traceback
+                print(f"[hub] status --json parse failed for {name}: {e}")
+                print(f"[hub] raw output: {raw[:200]}")
+                traceback.print_exc()
                 ov["status"] = {}
         else:
             r = R(["ratholenode", "ls"])

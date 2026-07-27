@@ -73,6 +73,7 @@ ratholectl rotate <name>               # چرخش توکن(ها)
 ratholectl show <name>                 # جزئیات + دستور نصب نود (curl یک‌خطی + install-node.sh)
 ratholectl set domain <new>            # تغییر تنظیمات سراسری
 ratholectl set fake-port 8443          # ... fake-port/sub-port/control-port/nginx-conf/fullchain/key
+                                       # از Hub UI هم قابل ویرایش است (بخش Ports در صفحه سرور)
 ratholectl rm <name>                   # حذف نود
 ratholectl status [--json]             # داشبورد کامل وضعیت (دامنه/پورت‌ها/گواهی/سرویس‌ها/نودها) — مثل ساب‌پنل VPN
 ratholectl paths                       # مسیر همه کانفیگ‌ها و فایل‌ها با علامت ✓/✗ وجود

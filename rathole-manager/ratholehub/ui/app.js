@@ -282,6 +282,8 @@ function renderIran(n,ov){
  let s='<div id="det_'+n+'"></div>';
  s+=`<div class="sec"><h4>${t('domain_tls')} <button class="g" onclick="domainTls('${n}')">${t('manage')}</button></h4>
    <div class="empty">${t('domain_hint')}</div></div>`;
+ s+=`<div class="sec"><h4>${t('ports_sec')} <button class="g" onclick="portsModal('${n}')">${t('manage')}</button></h4>
+   <div class="empty">${t('ports_hint')}</div></div>`;
  // samt-e IRAN: inja «kodam hamel DAR DASTRAS ast» tanzim mishavad — har hamel yek
  // listener/core-e mostaghel darad، pas inja on/off-e mostaghel DORost ast.
  // entekhab-e in ke har NODE az kodam hamel estefade konad dar safhe-ye node ast (select).
@@ -947,8 +949,23 @@ const PORT_READONLY=[
  {path:'direct',   k:'p_direct'},
 ];
 
+function portsModal(n){
+ modal(`<h3>${t('ports_sec')} (${n})</h3>
+ <div class="sub" style="margin-bottom:6px">${h(t('ports_hint'))}</div>
+ <div id="pt_ports"><div class="empty">${t('loading')}</div></div>
+ <div class="row" style="justify-content:flex-end;margin-top:10px">
+   <button class="s" onclick="run('${n}','regen_full');closeModal();">${t('dt_apply')}</button>
+   <button class="gh" onclick="closeModal()">${t('close')}</button></div>`);
+ dtLoadPorts(n);
+}
+
 async function dtLoadPorts(n){
- const box=$('dt_ports'); if(!box)return;
+ const box=$('pt_ports')||$('dt_ports'); if(!box)return;
+ // agar cache khali bud, avval refresh kon ta port-ha neshan dade shavand
+ if(!OVS[n]||!OVS[n].status||!OVS[n].status.ports){
+   box.innerHTML=`<div class="empty">${t('loading')}...</div>`;
+   await loadOv(n);
+ }
  const ov=OVS[n]||{}; const ports=(ov.status&&ov.status.ports)||{};
  let x='';
  PORT_EDITABLE.forEach(p=>{
