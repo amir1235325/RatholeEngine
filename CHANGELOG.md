@@ -9,6 +9,8 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.6.0-beta.5] - 2026-07-27
+
 ## [1.6.0-beta.1] - 2026-07-26
 
 ### Added
