@@ -21,7 +21,18 @@ PORT="${HUB_PORT:-8088}"
 BUNDLE_DIR="$APP_DIR/bundle"
 mkdir -p "$APP_DIR" "$CONF_DIR" "$BUNDLE_DIR"
 install -m755 "$SCRIPT_DIR/hub.py" "$APP_DIR/hub.py"
-log "hub.py nasb shod: $APP_DIR/hub.py"
+# hubcmds.py (naghshe-ye action→argv، bakhsh-e amniati) va asset-haye UI joda hastand
+# va HATMAN bayad kenar-e hub.py nasb shavand، vagarna hub bala nemiayad / UI khali ast.
+install -m644 "$SCRIPT_DIR/hubcmds.py" "$APP_DIR/hubcmds.py"
+mkdir -p "$APP_DIR/ui"
+for f in index.html app.css app.js i18n.js; do
+  [ -f "$SCRIPT_DIR/ui/$f" ] || die "file-e UI peyda nashod: ui/$f (baste naghes ast)."
+  install -m644 "$SCRIPT_DIR/ui/$f" "$APP_DIR/ui/$f"
+done
+# asset-haye ghadimi ke digar dar baste nistand ra pak kon (apdit az noskhe-ye ghadimi)
+find "$APP_DIR/ui" -maxdepth 1 -type f ! -name 'index.html' ! -name 'app.css' \
+     ! -name 'app.js' ! -name 'i18n.js' -delete 2>/dev/null || true
+log "hub.py + hubcmds.py + ui/ nasb shod: $APP_DIR"
 
 # astij kardan bainriha baraye ghablit deploy (apdit az rah dvr nodeha)
 for f in ratholectl ratholenode common.sh update.sh kcptest-iran.sh kcptest-node.sh; do

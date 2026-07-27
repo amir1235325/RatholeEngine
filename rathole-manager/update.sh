@@ -326,6 +326,22 @@ UNIT
       sed -i 's/\r$//' "$HUB_SRC"
       install -m 755 "$HUB_SRC" /opt/ratholehub/hub.py
       log "beroozresani shod: /opt/ratholehub/hub.py"
+      # hubcmds.py + ui/ az v1.6.0 joda shodand — agar copy nashavand hub bala nemiayad
+      # (ImportError) ya UI khali mishavad. masir-e kenar-e hub.py-e mabda ra bar midarim.
+      local HUB_DIR; HUB_DIR="$(dirname "$HUB_SRC")"
+      if [ -f "$HUB_DIR/hubcmds.py" ]; then
+        sed -i 's/\r$//' "$HUB_DIR/hubcmds.py"
+        install -m 644 "$HUB_DIR/hubcmds.py" /opt/ratholehub/hubcmds.py
+        log "beroozresani shod: /opt/ratholehub/hubcmds.py"
+      fi
+      if [ -d "$HUB_DIR/ui" ]; then
+        mkdir -p /opt/ratholehub/ui
+        local u
+        for u in index.html app.css app.js i18n.js; do
+          [ -f "$HUB_DIR/ui/$u" ] && install -m 644 "$HUB_DIR/ui/$u" "/opt/ratholehub/ui/$u"
+        done
+        log "asset-haye UI beroozresani shodand: /opt/ratholehub/ui/"
+      fi
       mkdir -p /opt/ratholehub/bundle
       local f
       for f in ratholectl ratholenode common.sh update.sh kcptest-iran.sh kcptest-node.sh; do

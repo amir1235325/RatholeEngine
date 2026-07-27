@@ -13,6 +13,7 @@
 cd rathole-manager/ratholehub
 sudo bash install-hub.sh          # رمز مدیریت می‌پرسد، API TOKEN تولید می‌کند
 ```
+نصاب از v1.6.0 کل درخت را کپی می‌کند: `hub.py` (روتر/وضعیت/SSH)، **`hubcmds.py`** (نقشه‌ی امنیتی action→argv — بدون این فایل هاب بالا نمی‌آید) و پوشه‌ی **`ui/`** (index.html/app.css/app.js/i18n.js — بدون آن UI خالی است). `update.sh` هم هنگام آپدیت نقش هاب هر سه را به‌روز می‌کند.
 پیش‌نیاز: از سرور پنل به بقیه سرورها SSH با کلید ست باشد:
 ```bash
 ssh-copy-id root@<node_ip>
@@ -63,7 +64,9 @@ curl -s -H "Authorization: Bearer $TOKEN" -X POST $B/api/servers/rp01/action \
   - وضعیت و نسخه: `status` (→ `ratholectl status --json`، خروجی کامل داشبورد)، `paths` (→ `ratholectl paths`)، `version` (→ `ratholectl version`).
   - `game_cert` گواهی Let's Encrypt می‌گیرد (نیاز: DNSِ SNI به سرور + پورت ۸۰ آزاد). خروجی شامل **کلید خصوصی** است؛ فقط از طریق هابِ احرازشده استفاده کن و لاگ نگه ندار.
   - مدیریت نود: `add_node{name,inbound,api_port?}`, `rm_node{name}`, `show_node{name}` (توکن نصب نود را می‌دهد)
-  - **توگل حالت‌های ورودی/transport**: `plain_on{port}`/`plain_off`/`plain_status`/`plain_show`, `noise_on{port}`/`noise_off`/…, و **`direct_status`/`direct_show`/`direct_off`/`direct_on{port,header}`** برای حالتِ direct-IP (مسیریابی با هدر، بدون TLS). فرمِ UI فیلدهای `port` و `header` را می‌گیرد و هر آرگومان با regex اعتبارسنجی می‌شود (`RE_PORT`، `RE_HEADER = ^[A-Za-z0-9-]{1,40}$`) و به‌صورت argv جدا پاس می‌شود — نه رشتهٔ شل.
+  - **توگل حالت‌های ورودی/transport**: `plain_on{port}`/`plain_off`/`plain_status`/`plain_show`, `noise_on{port}`/`noise_off`/…, `backhaul_on{port,transport,profile}`/`backhaul_off`/`backhaul_status`/`backhaul_show`/`backhaul_node_on{name}`/`backhaul_node_off{name}`, و **`direct_status`/`direct_show`/`direct_off`/`direct_on{port,header}`** برای حالتِ direct-IP (مسیریابی با هدر، بدون TLS). فرمِ UI فیلدهای `port` و `header` را می‌گیرد و هر آرگومان با regex اعتبارسنجی می‌شود (`RE_PORT`، `RE_HEADER = ^[A-Za-z0-9-]{1,40}$`) و به‌صورت argv جدا پاس می‌شود — نه رشتهٔ شل.
+  - **ریورس‌پروکسی غیرتونلی (v1.6.0)**: `proxy_ls`, `proxy_add{name,upstream}`, `proxy_rm{name}` — ساختن مسیر `/<name>/` روی همان ۴۴۳ به یک upstream دلخواه (بدون عبور از rathole). upstream با `RE_UPSTREAM` دقیقاً به شکل `http(s)://host:port` محدود می‌شود (بدون مسیر/query/متاکاراکتر) چون مستقیم به کانفیگ nginx می‌رود؛ فضای‌نام با نودها مشترک است و تداخل رد می‌شود.
+  - **پیکربندی سرور**: `set_config{key,value}` — علاوه‌بر `domain`/`fullchain`/`key`/`nginx-conf`، از v1.6.0 پورت‌های `fake-port`/`sub-port`/`control-port` هم از UI قابل ویرایش‌اند.
   - کشف: `GET /api/servers/<iran>/discover` → لیست نودهای تعریف‌شده در state آن ایران
 - **node**: `show`, `ls`, `upstream_ls`, `kcp_status`, `kcp_on{remote,key,profile}`, `kcp_off`, `upstream_kcp_on{id,remote,key,profile}`, `upstream_kcp_off{id}`, `migrate`, `tune`, `apply`, `version` (→ `ratholenode version`)
   - **تنظیم تانل اصلی**: `set_server{server}` (→ `ratholenode set SERVER <host[:port]>`) — تانل اصلی نود را به یک سرور ایران وصل می‌کند؛ `server` با `RE_IPPORT` یا `RE_HOST` اعتبارسنجی می‌شود.
@@ -74,8 +77,12 @@ UI هنگام باز شدن، وضعیت همه‌ی سرورها را خودک�
 
 همه‌ی ورودی‌ها با regex سخت اعتبارسنجی می‌شوند (ضد تزریق).
 
-## امکانات UI (نسخهٔ ۱.۴.۵ به بعد)
+## امکانات UI (نسخهٔ ۱.۶ به بعد)
 جزئیات کامل UI در `docs/hub.md` است؛ سرفصل‌ها:
+- **select انحصاریِ حامل تونل روی هر نود** — پنج دستور transport همگی یک متغیر (`TUNNEL`) را می‌نویسند؛ UI به‌جای پنج جفت دکمه‌ی گمراه‌کننده یک select (`ws`/`kcp`/`plain`/`noise`/`backhaul`) نشان می‌دهد که تعویضش **هر دو سمت را هماهنگ** می‌کند (فعال‌سازی سمت ایران در صورت نیاز + پارامترهای خودکار از سرور + پاک‌سازی حامل قبلی).
+- **سوییچ‌های «حامل‌های در دسترس» سمت ایران** — هر حامل (kcp/plain/noise/backhaul) listener/core مستقل خودش را دارد و سوییچ خودش را می‌گیرد.
+- **صفحهٔ تنظیمات کامل‌تر** — پورت‌های `fake-port`/`sub-port`/`control-port` سرور ایران از UI قابل ویرایش‌اند (با هشدار تداخل پورت).
+- **ریورس‌پروکسی غیرتونلی** — اکشن‌های `proxy_*` (بخش قبل).
 - **دکمهٔ «آپدیت همه»**: سرورها را یکی‌یکی با `deploy` آپدیت می‌کند و پیشرفت را با progress bar نشان می‌دهد.
 - **نمایش نسخهٔ هر سرور**: badge سبز/زرد که `version` هر سرور (از `overview`) را با `latest_version` هاب مقایسه می‌کند؛ زرد یعنی قدیمی‌تر و نیاز به آپدیت.
 - **دکمهٔ «افزودن به نود»**: نود ایران را با یک کلیک به یک نود/اپ‌استریم خارج سیم‌کشی می‌کند (token/inbound از `nodeconnect` → `add_svc`/`upstream_add_svc`).

@@ -56,7 +56,7 @@ The core design principle everywhere: **change state → regenerate config → v
 
 ## Transport modes
 
-The same tunnel can be carried four ways (plus a game/SNI L4 mode) — switching never changes user services, tokens, or paths, only the carrier.
+The same tunnel can be carried **five** ways (plus a game/SNI L4 mode) — switching never changes user services, tokens, or paths, only the carrier. Each node's carrier is **exclusive**: the hub exposes it as a single select (`ws`/`kcp`/`plain`/`noise`/`backhaul`) that coordinates both sides.
 
 ![Transport modes](docs/assets/transport-modes.svg)
 
@@ -64,6 +64,7 @@ The same tunnel can be carried four ways (plus a game/SNI L4 mode) — switching
 - **kcp** — parallel UDP+FEC path for lossy links (looks like QUIC on UDP/443).
 - **plain** — no-TLS websocket to a separate HTTP listener (lighter, unencrypted).
 - **noise** — encrypted transport (Noise/X25519) on a second rathole instance, no TLS/cert.
+- **backhaul** *(v1.6)* — a separate Go core (`Musixal/Backhaul`) beside rathole that multiplexes many user connections onto one stream via **SMUX**; nginx proxies the hardcoded `/channel` + `/tunnel` paths to it on the same 443, so single-port/single-domain holds.
 - **game / SNI** — L4 passthrough on 443; TLS terminates on the node (VLESS+TLS+Vision).
 - **adaptive failover** *(v1.5.0)* — timer-driven probes classify each carrier (`healthy / tls_failed / tcp_timeout / …`) and auto-switch between ws and kcp with hysteresis + cooldown; plain requires explicit `ALLOW_INSECURE=1`.
 - **secret control path** *(v1.5.0)* — WebSocket control upgraded from `/` to `/_rh/<32 hex>`; nginx routes only that exact path to rathole; all other paths retain fake-site behaviour.
@@ -100,6 +101,7 @@ Then add nodes from the Iran panel:
 ```bash
 ratholectl hub on <port>             # enable hub on port <port>
 ratholectl add trk01 2087            # → path /trk01 routed to that node
+ratholectl proxy add mysvc http://127.0.0.1:9000   # /mysvc/ → any upstream, no rathole involved
 ratholectl ls                        # list nodes + user paths
 ratholectl status                    # full dashboard: domain, ports, cert, services, nodes (--json for the hub)
 ratholectl paths                     # every config/file path with a ✓/✗
@@ -148,7 +150,7 @@ TLS certs are never removed. The shared `common.sh` is removed only when no othe
 | [`docs/architecture.md`](docs/architecture.md) | Three roles, the state→regenerate→reload principle, the path==name==map==inbound invariant. |
 | [`docs/transport-modes.md`](docs/transport-modes.md) | The four transport carriers + game/SNI, with diagram. |
 | [`docs/traffic-flow.md`](docs/traffic-flow.md) | Layer-by-layer packet path (Mermaid + SVG diagrams). |
-| [`docs/hub.md`](docs/hub.md) | Central web panel (`hub.py`): REST API, security model, allow-listed actions. |
+| [`docs/hub.md`](docs/hub.md) | Central web panel (`hub.py` + `hubcmds.py` + `ui/`): REST API, security model, allow-listed actions. |
 | [`docs/performance.md`](docs/performance.md) | Tuning beyond the tunnel (BBR, kcp profiles, non-tunnel bottlenecks). |
 | [`docs/amneziawg-reverse.md`](docs/amneziawg-reverse.md) | A separate AmneziaWG reverse-tunnel design (not part of the rathole flow). |
 | [`docs/README.fa.md`](docs/README.fa.md) | **Full Persian CLI reference + install/uninstall flows.** |
@@ -167,7 +169,9 @@ rathole-manager/
   ratholectl              Iran panel CLI (rathole server + nginx)
   ratholenode             foreign node CLI (rathole client)
   common.sh               shared bash helpers
-  ratholehub/hub.py       central web panel (stdlib Python)
+  ratholehub/hub.py       central web panel (stdlib Python) — router/state/SSH/parsers
+  ratholehub/hubcmds.py   security-critical action→argv allow-list (RE_* regexes)
+  ratholehub/ui/          web UI assets (index.html, app.css, app.js, i18n.js)
   install-*.sh            per-role installers (panel/node/hub)
   update.sh               safe update: snapshot + health-check + rollback
   uninstall-*.sh

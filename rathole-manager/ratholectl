@@ -296,6 +296,11 @@ cmd_add(){
   if jq -e --arg n "$name" '.nodes[]|select(.name==$n)' "$STATE" >/dev/null; then
     die "node '$name' az ghabl vojood darad."
   fi
+  # node va reverse-proxy HAR DO dar map-e /<name> mineshinand — esm-e tekrari yani
+  # do location-e mote'arez dar nginx. pas har do jahat check mishavad.
+  if jq -e --arg n "$name" '(.proxies // [])[]|select(.name==$n)' "$STATE" >/dev/null 2>&1; then
+    die "esm '$name' baraye yek reverse-proxy estefade shode ast (ratholectl proxy ls)."
+  fi
 
   local dstart astart dport aport token atoken
   dstart="$(s_get '.data_port_start')"
@@ -582,6 +587,36 @@ HB
 BHB
 )"
   fi
+  # ---- reverse-proxy-haye gheyre-tunnel ----
+  # masir-haye /<name>/ ke be yek upstream-e DELKHAH proxy mishavand (na az tarigh-e rathole).
+  # baraye tunnel-ha/service-haye kastom ke khodeshan mostaghel balaand.
+  # upstream dar cmd_proxy ba regex mahdud shode (faghat scheme://host:port) — inja
+  # dobare check nemikonim vali HICH vorodi-ye digari be conf tazrigh nemishavad.
+  local proxy_block=""
+  if jq -e '(.proxies // []) | length > 0' "$STATE" >/dev/null 2>&1; then
+    proxy_block="$(jq -r '.proxies[] | [.name, .upstream] | @tsv' "$STATE" 2>/dev/null |
+      while IFS=$'\t' read -r pn pu; do
+        pn="${pn%$'\r'}"; pu="${pu%$'\r'}"
+        [ -n "$pn" ] && [ -n "$pu" ] || continue
+        cat <<PXB
+
+    # reverse-proxy (gheyre-tunnel): /${pn}/ -> ${pu}
+    location /${pn}/ {
+        proxy_pass ${pu}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+PXB
+      done)"
+  fi
   {
     echo "# tvlid khodkar tvst ratholectl — dasti virayesh nakon"
     echo "# masir(path) dita -> port lvkal rathole"
@@ -649,6 +684,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
 ${hub_block}
 ${bh_block}
+${proxy_block}
     # rishh: tfkik sait fik az channel kontroli ba hdr Upgrade
     location = ${ctrl_path} {
         proxy_pass http://127.0.0.1:${ctrl};
@@ -2281,6 +2317,67 @@ cmd_backhaul(){
   esac
 }
 
+# ---------- reverse-proxy-e gheyre-tunnel (baraye tunnel/service-haye kastom) ----------
+# yek masir /<name>/ rooye haman 443 misazad ke be yek upstream-e delkhah proxy mikonad —
+# bedoon-e obur az rathole. baraye vaghti ke khodet yek tunnel/service-e mostaghel dari
+# va mikhahi az haman domain/gvahi serve shavad.
+#
+# AMNIAT: upstream faghat 'http(s)://host:port' ast — bedoon masir، bedoon query va bedoon
+# hich metachar-e shl/nginx. in mane-e tazrigh be conf mishavad. khod-e maghsad "e'temad-shode"
+# farz mishavad (aperator anra entekhab mikonad).
+cmd_proxy(){
+  need_root; need_bin jq; ensure_state
+  local sub="${1:-ls}"; shift || true
+  case "$sub" in
+    add)
+      local name="${1:-}" up="${2:-}"
+      [ -n "$name" ] && [ -n "$up" ] || die "estefade: ratholectl proxy add <name> <http(s)://host:port>"
+      echo "$name" | grep -qE '^[A-Za-z0-9_-]{1,40}$' || die "name faghat harf/adad/_/- va hadaksar 40 karakter."
+      # nam-haye rezerv: masir-haye sabet-e nginx
+      case "$name" in sub|hub|channel|tunnel) die "esm '$name' rezerv ast (masir-e sabet-e nginx)." ;; esac
+      echo "$up" | grep -qE '^https?://[A-Za-z0-9._-]{1,255}:[0-9]{1,5}$' \
+        || die "upstream bayad daghighan be shekl http://host:port ya https://host:port bashad (bedoon masir)."
+      jq -e --arg n "$name" '.nodes[]|select(.name==$n)' "$STATE" >/dev/null 2>&1 \
+        && die "esm '$name' motealegh be yek node ast (har do dar map-e /<name> mineshinand)."
+      jq -e --arg n "$name" '(.proxies // [])[]|select(.name==$n)' "$STATE" >/dev/null 2>&1 \
+        && die "reverse-proxy '$name' az ghabl vojood darad."
+      local tmp; tmp="$(mktemp)"
+      jq --arg n "$name" --arg u "$up" \
+         '.proxies = ((.proxies // []) + [{name:$n, upstream:$u}])' "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+      log "reverse-proxy ezafe shod: /${name}/ → ${up}"
+      regenerate
+      local domain; domain="$(s_get '.domain')"
+      echo "masir-e karbar: https://${domain:-<DOMAIN>}/${name}/"
+      ;;
+    rm)
+      local name="${1:-}"
+      [ -n "$name" ] || die "estefade: ratholectl proxy rm <name>"
+      jq -e --arg n "$name" '(.proxies // [])[]|select(.name==$n)' "$STATE" >/dev/null 2>&1 \
+        || die "reverse-proxy '$name' peyda nashod."
+      local tmp; tmp="$(mktemp)"
+      jq --arg n "$name" '.proxies = ((.proxies // []) | map(select(.name != $n)))' "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+      log "reverse-proxy hazf shod: $name"
+      regenerate
+      ;;
+    ls)
+      local cnt; cnt="$(jq -r '(.proxies // []) | length' "$STATE" 2>/dev/null)"
+      if [ "${cnt:-0}" -eq 0 ]; then
+        echo "(hich reverse-proxy-i tarif nashode) — ezafe: ratholectl proxy add <name> <http://host:port>"
+        return 0
+      fi
+      local domain; domain="$(s_get '.domain')"
+      printf '%-16s %-32s %s\n' "NAME" "UPSTREAM" "USER URL"
+      printf '%s\n' "--------------------------------------------------------------------"
+      jq -r '.proxies[] | [.name, .upstream] | @tsv' "$STATE" 2>/dev/null |
+      while IFS=$'\t' read -r pn pu; do
+        pu="${pu%$'\r'}"
+        printf '%-16s %-32s %s\n' "$pn" "$pu" "https://${domain:-<DOMAIN>}/${pn}/"
+      done
+      ;;
+    *) die "estefade: ratholectl proxy <add <name> <http(s)://host:port>|rm <name>|ls>" ;;
+  esac
+}
+
 print_backhaul_connect(){
   local bp token tr ctr prof domain
   bp="$(jq -r '.backhaul_port // empty' "$STATE" 2>/dev/null)"
@@ -2457,6 +2554,7 @@ dstvrha:
   plain <on [port]|off|status|show>   tunnel-e websocket bedoon-e TLS (listener HTTP rooye port jda, masalan 8880)
   noise <on [port]|off|node <name> on|off|status|show>   tunnel-e ramznegari-shode (Noise) rooye instans-e dovom (bedoon TLS/cert, port omomi masalan 2334)
   backhaul <on [port] [transport] [profile]|off|node <name> on|off|status|show>   core-e backhaul (SMUX) posht-e nginx/443 — tak-port hefz (transport-e server: ws|wsmux — bedoon TLS; client khodkar wss/wssmux migirad. profile: balanced/lossy/aggressive)
+  proxy <add <name> <http(s)://host:port>|rm <name>|ls>   reverse-proxy-e gheyre-tunnel: /<name>/ rooye haman 443 be yek upstream-e delkhah (baraye tunnel/service-haye kastom)
   game add <name> <inbound> <sni>   service game (SNI rooye 443, TLS rooye node)
 
   game rm <name> | ls | show <name> | cert <sni>   mdirit service game va gvahi
@@ -2538,6 +2636,7 @@ main(){
     direct) cmd_direct "$@" ;;
     noise)  cmd_noise "$@" ;;
     backhaul) cmd_backhaul "$@" ;;
+    proxy)  cmd_proxy "$@" ;;
 
     control-path) cmd_control_path "${1:-show}" "$@" ;;
     game)   cmd_game "$@" ;;
