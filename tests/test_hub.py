@@ -106,5 +106,59 @@ class TestAdaptiveAllowList(unittest.TestCase):
         self.assertNotIn("abc", cmd)
 
 
+class TestParseIranLs(unittest.TestCase):
+    """parse_iran_ls bayad transport/sni-e sotoon-haye jadid ra begirad va ba
+    khorooji-ye CLI-e ghadimi (bedoon-e in do sotoon) ham sazgar bemanad."""
+
+    NEW = ("NAME           PORT     INBOUND      API        TRANSPORT  SNI              USER PATH\n"
+           "--------------------------------------------------------------------------------\n"
+           "trk01          1005     8444         -          backhaul   -                https://d/trk01\n"
+           "trk02          1006     8445         9001       ws         -                https://d/trk02\n"
+           "gamenode       1007     8446         -          ws         gmtrk.l1t.ir     https://d/gamenode\n"
+           "noisenode      1008     8447         -          noise      -                https://d/noisenode\n")
+    OLD = ("NAME           PORT     INBOUND      API        USER PATH\n"
+           "--------------------------------------------------------------\n"
+           "trk01          1005     8444         -          https://d/trk01\n")
+
+    def _by_name(self, nodes):
+        return {n["name"]: n for n in nodes}
+
+    def test_new_format_transport_sni(self):
+        nm = self._by_name(hub.parse_iran_ls(self.NEW))
+        self.assertEqual(len(nm), 4)
+        self.assertEqual(nm["trk01"]["transport"], "backhaul")
+        # transport-e 'ws' = pishfarz → None (ta iranNodeMode ba noise/game eshtebah nashavad)
+        self.assertIsNone(nm["trk02"]["transport"])
+        self.assertIsNone(nm["trk02"]["sni"])
+        self.assertEqual(nm["noisenode"]["transport"], "noise")
+        self.assertEqual(nm["gamenode"]["sni"], "gmtrk.l1t.ir")
+        self.assertEqual(nm["trk01"]["path"], "https://d/trk01")
+
+    def test_old_format_still_parses(self):
+        nm = self._by_name(hub.parse_iran_ls(self.OLD))
+        self.assertEqual(len(nm), 1)
+        self.assertEqual(nm["trk01"]["path"], "https://d/trk01")
+        # CLI-e ghadimi transport/sni nadarad — nabayad KeyError bedahad
+        self.assertIsNone(nm["trk01"].get("transport"))
+
+
+class TestIranPerNodeActions(unittest.TestCase):
+    """action-hayi ke select-e per-node-e Iran seda mizanad bayad dar allow-list
+    bashand، argv-e dorost besazand va tazrigh-e name ra rad konand."""
+
+    def test_per_node_actions_map_and_write(self):
+        for act in ("noise_node_on", "noise_node_off",
+                    "backhaul_node_on", "backhaul_node_off", "regen_full"):
+            cmd = hub.build_iran_cmd(act, {"name": "trk02"})
+            self.assertIsNotNone(cmd, act)
+            if act != "regen_full":
+                self.assertIn(act in WRITE_ACTIONS, (True,), act)
+
+    def test_per_node_name_injection_rejected(self):
+        for act in ("noise_node_on", "backhaul_node_on"):
+            self.assertIsNone(hub.build_iran_cmd(act, {"name": "trk02; rm -rf /"}))
+            self.assertIsNone(hub.build_iran_cmd(act, {"name": "trk02\n"}))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

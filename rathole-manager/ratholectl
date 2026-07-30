@@ -361,12 +361,17 @@ cmd_rm(){
 cmd_ls(){
   need_bin jq; ensure_state
   local domain; domain="$(s_get '.domain')"
-  printf '%-14s %-8s %-12s %-10s %s\n' "NAME" "PORT" "INBOUND" "API" "USER PATH"
-  printf '%s\n' "--------------------------------------------------------------"
+  # TRANSPORT/SNI-e har node ra ham chap mikonim ta hub betavanad mode-e daghigh-e har
+  # node ra neshan dahad (transport-e khali = ws-e pishfarz). ja-negahdar '-' ta split-e
+  # movghiati (parse_iran_ls) salem bemanad — USER PATH akhar ast va space nadarad.
+  printf '%-14s %-8s %-12s %-10s %-10s %-16s %s\n' "NAME" "PORT" "INBOUND" "API" "TRANSPORT" "SNI" "USER PATH"
+  printf '%s\n' "--------------------------------------------------------------------------------"
   jq -r '.nodes[] | [.name, (.port|tostring), (.inbound_port|tostring),
-          ((.api_local_port // "-")|tostring)] | @tsv' "$STATE" |
-  while IFS=$'\t' read -r n p ib ap; do
-    printf '%-14s %-8s %-12s %-10s %s\n' "$n" "$p" "$ib" "$ap" "https://$domain/$n"
+          ((.api_local_port // "-")|tostring),
+          ((.transport // "ws")|tostring),
+          ((.sni // "-")|tostring)] | @tsv' "$STATE" |
+  while IFS=$'\t' read -r n p ib ap tr sni; do
+    printf '%-14s %-8s %-12s %-10s %-10s %-16s %s\n' "$n" "$p" "$ib" "$ap" "$tr" "$sni" "https://$domain/$n"
   done
 }
 

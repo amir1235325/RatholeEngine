@@ -9,6 +9,32 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-07-30
+
+behbood-e panel-e hub: namayesh-e DAGHIGH-e mode-e har node + kontrol-e per-node samt-e Iran.
+in release reftar-e tunnel ra avaz nemikonad — faghat namayesh va rahati-ye modiriat ra dorost mikonad
+(dar edame-ye fix-e backhaul-e 1.6.0).
+
+### Added
+- **select-e per-node-e hamel rooye safhe-ye Iran:** kenar-e har node dar jadval yek `<select>`
+  (ws/noise/backhaul) ezafe shod — daghighan mesl-e select-e safhe-ye node. ta hala samt-e Iran
+  faghat dokme-haye on/off-e SARASARI dasht va mode-e har node ja-be-ja (badge-e noise, dokme-ye
+  backhaul-e sarasari) bood. hala har node az yek ja qabel-e switch ast (`noise_node_*`/`backhaul_node_*`).
+- **badge-e mode-e vahed (`iranNodeMode`)**: yek manba-e vahed-e haghighat mode-e har node ra ba
+  olaviat-e qati mohasebe mikonad — `game (SNI) > backhaul > noise > ws` — va hameye namayesh-ha
+  (jadval + badge) az hamin mikhanand، pas digar «nAmnazm» be nazar nemirasad.
+- **dokme-ye «tanzim-e mojadad (regen)»** dar bakhsh-e hamel-haye Iran: baad az taghir-e mode-e
+  node-ha config az state bazsazi va hot-reload mishavad (bedoon-e oftadan-e tunnel-haye faal).
+- sotoon-haye `TRANSPORT` va `SNI` be khorooji-ye `ratholectl ls` ezafe shod ta hub betavanad
+  mode-e daghigh-e har node ra bekhanad (badge-e `b-backhaul`/`b-game` + kelid-haye i18n).
+
+### Changed
+- `MANAGER_VERSION` az `1.6.0` be `1.6.1`.
+
+### Fixed
+- `parse_iran_ls` (hub) sotoon-haye jadid-e transport/sni ra migirad va ba khorooji-ye
+  `ratholectl ls`-e ghadimi (bedoon-e in do sotoon) ham sazgar mimanad — test-e vahed baraye har do format.
+
 ## [1.6.0] - 2026-07-30
 
 release-e paydar (stable). channel-e beta (v1.6.0-beta.1..7) be onvan-e 1.6.0 promote shod.

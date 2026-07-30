@@ -448,10 +448,13 @@ def mock_run(server, cmd_args):
     role = server.get("role")
 
     if j == "ratholectl ls":
-        return {"rc": 0, "out": "NAME           PORT     INBOUND      API        USER PATH\n"
-                "--------------------------------------------------------------\n"
-                "trk01          1005     8444         -          https://d/trk01\n"
-                "gamenodetrk    1007     2101         7001       https://d/gamenodetrk", "err": ""}
+        return {"rc": 0, "out":
+                "NAME           PORT     INBOUND      API        TRANSPORT  SNI              USER PATH\n"
+                "--------------------------------------------------------------------------------\n"
+                "trk01          1005     8444         -          backhaul   -                https://d/trk01\n"
+                "trk02          1006     8445         9001       ws         -                https://d/trk02\n"
+                "noisenode      1008     8447         -          noise      -                https://d/noisenode\n"
+                "gamenodetrk    1007     2101         7001       ws         gmtrk.l1t.ir     https://d/gamenodetrk", "err": ""}
     if cmd_args[:2] == ["ratholectl", "show"] and len(cmd_args) >= 3:
         nm = cmd_args[2]
         return {"rc": 0, "out":
@@ -551,8 +554,18 @@ def parse_iran_ls(text):
             continue
         p = t.split()
         if len(p) >= 2 and p[1].isdigit():
-            nodes.append({"name": p[0], "port": p[1], "inbound": p[2] if len(p) > 2 else "",
-                          "api": p[3] if len(p) > 3 else "-", "path": p[4] if len(p) > 4 else ""})
+            # sotoon-haye jadid (transport/sni) az CLI-e taze miayand; ba CLI-e ghadimi
+            # (bedoon-e in do sotoon) ham sazgar bemanim: age nabashand, path hamon p[4] ast.
+            n = {"name": p[0], "port": p[1], "inbound": p[2] if len(p) > 2 else "",
+                 "api": p[3] if len(p) > 3 else "-"}
+            if len(p) >= 7:  # NAME PORT INBOUND API TRANSPORT SNI PATH
+                tr = p[4]
+                n["transport"] = None if tr in ("ws", "-", "") else tr
+                n["sni"] = None if p[5] in ("-", "") else p[5]
+                n["path"] = p[6]
+            else:            # CLI-e ghadimi: p[4]=PATH
+                n["path"] = p[4] if len(p) > 4 else ""
+            nodes.append(n)
     return nodes
 
 def parse_kcp_status(text):

@@ -310,7 +310,9 @@ function renderIran(n,ov){
    <button class="s" onclick="bhNode('${n}','on')">${t('bh_node_on')}</button>
    <button class="s" onclick="bhNode('${n}','off')">${t('bh_node_off')}</button></div>
    <div class="btns" style="margin-top:10px">
-   <button class="s" onclick="if(confirm(t('cf_restart')))run('${n}','restart')">${t('restart_rathole')}</button></div></div>`;
+   <button class="g" onclick="if(confirm(t('cf_reapply')))run('${n}','regen_full')">${t('reapply')}</button>
+   <button class="s" onclick="if(confirm(t('cf_restart')))run('${n}','restart')">${t('restart_rathole')}</button></div>
+   <div class="sub" style="margin-top:4px">${h(t('reapply_hint'))}</div></div>`;
  // VORODI-ha (ingress): in ha hamel-e tunnel NISTAND — ravesh-e vorood-e karbar hastand.
  s+=`<div class="sec"><h4>${t('ingress_sec')}</h4>
    <div class="sub" style="margin-bottom:6px">${h(t('ingress_hint'))}</div>
@@ -335,16 +337,15 @@ function renderIran(n,ov){
   const nnodes=(ov.noise||{}).nodes||[]; const hn=(ov.health||{}).nodes||{};
   nodes.forEach(d=>{ const isN=nnodes.indexOf(d.name)>=0;
    const st=hn[d.name]; const hdot=st?`<span class="dot ${st==='ok'?'d-ok':'d-bad'}" title="${st==='ok'?t('nd_up'):t('nd_down')}" style="margin-inline-end:6px"></span>`:'';
-   const nbadge=isN?` <span class="badge b-noise">noise</span>`:'';
-   const ntog=isN?`<button class="s" onclick="run('${n}','noise_node_off',{name:'${esc(d.name)}'})">${t('noise_node_off')}</button>`
-                 :`<button class="s" onclick="run('${n}','noise_node_on',{name:'${esc(d.name)}'})">${t('noise_node_on')}</button>`;
+   const nbadge=` ${modeBadge(iranNodeMode(ov,d.name))}`;
+   const csel=iranNodeCarrierSel(n,ov,d.name);
    s+=`<tr><td>${hdot}${esc(d.name)}${nbadge}</td><td class="mono">${esc(d.port)}</td><td class="mono">${esc(d.inbound)}</td><td class="mono">${esc(d.api)}</td>
    <td class="btns"><button class="gh" onclick="run('${n}','show_node',{name:'${esc(d.name)}'})">${t('show_token')}</button>
    <button class="g" onclick="wireNode('${n}','${esc(d.name)}')">${t('wire_to_node')}</button>
    <button class="gh" onclick="editNode('${n}','${esc(d.name)}')">${t('edit')}</button>
    <button class="gh" onclick="renameNode('${n}','${esc(d.name)}')">${t('rename')}</button>
    <button class="gh" onclick="if(confirmT('cf_rotate','${esc(d.name)}'))run('${n}','rotate_node',{name:'${esc(d.name)}'})">${t('rotate')}</button>
-   ${ntog}
+   ${csel}
    <button class="r" onclick="rmNode('${n}','${esc(d.name)}')">${t('remove')}</button></td></tr>`;});
   s+='</table>';}
  s+='</div>';
@@ -371,6 +372,26 @@ function svcStatus(name){
 function svcDot(name){
  const st=svcStatus(name);
  return st?`<span class="dot ${st==='ok'?'d-ok':'d-bad'}" title="${st==='ok'?t('nd_up'):t('nd_down')}" style="margin-inline-end:6px"></span>`:'';
+}
+
+// ---------- MODE-e daghigh-e har node az didgah-e Iran (manba-e vahed) ----------
+// har node dar har lahze YEK mode darad. tartib-e olaviat: game (sni) > backhaul > noise > ws.
+// az .transport-e khod-e node (ratholectl ls) mikhanim va baraye CLI-e ghadimi az
+// ov.noise.nodes[] / ov.game[] fallback migirim ta hamishe daghigh bashad.
+function iranNodeMode(ov,name){
+ ov=ov||{};
+ const nd=(ov.nodes||[]).find(x=>x&&x.name===name)||{};
+ // olaviat-e GHATIE: game(SNI) > backhaul > noise > ws. game yek switch-e L4 rooye 443 ast
+ // ke bar hame ghaleb ast, pas AVAL check mishavad (che az ov.game va che az sni-e khod-e node).
+ if((ov.game||[]).some(x=>x&&x.name===name)||nd.sni)return 'game';
+ if(nd.transport==='backhaul')return 'backhaul';
+ if(nd.transport==='noise'||((ov.noise||{}).nodes||[]).indexOf(name)>=0)return 'noise';
+ return 'ws';
+}
+// badge-e mode ba class/rang-e hamsan ba baghye-ye UI.
+function modeBadge(mode){
+ const cls={ws:'b-ws',kcp:'b-kcp',plain:'b-plain',noise:'b-noise',backhaul:'b-backhaul',game:'b-game'}[mode]||'b-ws';
+ return `<span class="badge ${cls}">${h(t('mode_'+mode))}</span>`;
 }
 
 function renderNode(n,ov){
@@ -1215,6 +1236,39 @@ function setCarrier(n,next,cur){
 // bargasht be ws: har halat dastur-e off-e khodash ra darad.
 function carrierOffAction(cur){
  return ({kcp:'kcp_off',plain:'plain_off',noise:'noise_off',backhaul:'backhaul_off'})[cur]||'kcp_off';
+}
+
+// ============ MODE-e per-node SAMT-e IRAN (select mesl-e node) ============
+// rooye Iran faghat noise/backhaul PER-NODE hastand (har node .transport-e khodash ra
+// darad). kcp/plain HAMEL-e SARASARI-ye server-e Iran hastand (yek listener/core baraye
+// hame), pas inja nemiayand va toggle-e sarasari-e khodeshan ra negah midarand. game ham
+// transport nist — yek service-e L4-e joda (SNI) ast. pas select-e per-node = {ws,noise,backhaul}.
+const IRAN_NODE_CARRIERS=['ws','noise','backhaul'];
+
+// select-e per-node baraye node-haye Iran. baraye node-haye game (L4) select bi-mani ast.
+function iranNodeCarrierSel(iran,ov,name){
+ const mode=iranNodeMode(ov,name);
+ if(mode==='game')return `<span class="badge b-game">${h(t('mode_game'))}</span>`;
+ const cur=(mode==='noise'||mode==='backhaul')?mode:'ws';
+ const id='icar_'+iran+'__'+name;
+ const opts=IRAN_NODE_CARRIERS.map(c=>`<option value="${c}"${c===cur?' selected':''}>${h(t('carrier_'+c))}</option>`).join('');
+ return `<select id="${id}" title="${h(t('carrier'))}" onchange="setIranNodeCarrier('${iran}','${esc(name)}',this.value,'${cur}')">${opts}</select>`;
+}
+
+// avaz kardan-e transport-e YEK node samt-e Iran. faghat action-haye mojood-e allow-list ra
+// seda mizanad (noise_node_on/off, backhaul_node_on/off). YADAVARI: in nim-e Iran ast —
+// samt-e node ham bayad hamon hamel bashad (carrierSelect-e safhe-ye node).
+function setIranNodeCarrier(iran,name,next,cur){
+ if(next===cur)return;
+ const sel=$('icar_'+iran+'__'+name);
+ const revert=()=>{if(sel)sel.value=cur;};
+ if(!confirm(t('icarrier_confirm').replace('%s',t('carrier_'+next)).replace('%n',name))){revert();return;}
+ switch(next){
+   case 'ws':       run(iran, cur==='backhaul'?'backhaul_node_off':'noise_node_off',{name}); break;
+   case 'noise':    run(iran,'noise_node_on',{name}); break;
+   case 'backhaul': run(iran,'backhaul_node_on',{name}); break;
+   default: revert();
+ }
 }
 
 function bhOnNode(n){formModal(t('t_bh_node'),bhNodeFields(),
