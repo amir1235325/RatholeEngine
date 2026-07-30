@@ -231,7 +231,7 @@ def hub_status():
 # ta baghi-ye kod (va test-ha) bedoon taghir kar konand.
 from hubcmds import (  # noqa: F401  (nam-ha dar sartasar-e hub estefade mishavand)
     RE_NAME, RE_HOST, RE_PORT, RE_PROFILE, RE_IPPORT, RE_KEY, RE_B64, RE_ID, RE_PW,
-    RE_EMAIL, RE_PATH, RE_SLUG, RE_HEADER, RE_BH_SRV, RE_BH_CLI, RE_BH_TOK,
+    RE_EMAIL, RE_PATH, RE_SLUG, RE_HEADER, RE_BH_SRV, RE_BH_CLI, RE_BH_TOK, RE_CHAN,
     build_iran_cmd, build_node_cmd, build_cmd, WRITE_ACTIONS,
 )
 
@@ -280,27 +280,51 @@ def deploy_to_server(server):
     # ghproxy baraye dor zadan-e filtering) va ba --update ejra mikonad. digar be bundle-e
     # mahalli-ye hub vabaste nist — server hamishe akharin noskhe-ye montasher-shode ra migirad.
     if MOCK:
-        return {"rc": 0, "out": "[mock deploy→%s] github install.sh --update (akharin Release)" % server.get("name"), "err": ""}
+        _chan = str(get_config().get("update_channel", "stable"))
+        return {"rc": 0, "out": "[mock deploy→%s] github install.sh --update (kanal=%s)" % (server.get("name"), _chan), "err": ""}
     cfg = get_config()
     # slug az config (sabet، na vorodi-ye karbar) va ba regex etebarsanji mishavad.
     gh = str(cfg.get("gh_repo", "loopy-iri/RatholeEngine"))
     if not RE_SLUG.match(gh):
         return {"rc": 1, "out": "", "err": "gh_repo namotabar dar config: %r" % gh}
+    # kanal-e apdit az config (default stable). faghat stable/beta mojaz ast (RE_CHAN).
+    # CHERA MOHEM: 'stable' → releases/latest/download ke pre-release ha ra NADIDE migirad.
+    # agar server rooye beta bashad va bدون in latest=noskhe-ye stable-e ghadimi tar bashad،
+    # apdit an ra DOWNGRADE mikonad va backhaul/features-e jadid ra kharab mikonad. baraye
+    # server-haye beta bayad kanal='beta' bashad ta tag-e daghigh (releases.atom) resolve shavad.
+    chan = str(cfg.get("update_channel", "stable"))
+    if not RE_CHAN.match(chan):
+        return {"rc": 1, "out": "", "err": "update_channel namotabar dar config: %r (stable|beta)" % chan}
     base = _ssh_base(cfg, server)
-    # yek script-e khoddATka ke rooye server ejra mishavad. tanha meghdar-e tazrigh-shode
-    # slug-e etebarsanji-shode ast (RE_SLUG). mirror-ha hamsan-e install.sh/install-panel.sh.
+    # yek script-e khoddATka ke rooye server ejra mishavad. tanha meghdar-haye tazrigh-shode
+    # slug (RE_SLUG) va kanal (RE_CHAN) hastand — har do etebarsanji-shode. mirror-ha hamsan-e install.sh.
+    # baraye kanal-e beta: tag-e pre-release ra rooye KHODE server az releases.atom peyda mikonim
+    # (api.github.com az mirror obur nemikonad vali releases.atom mikonad — hamsan-e resolve_beta_tag).
     remote = r'''set -e
 GH="%s"
-URL="https://github.com/$GH/releases/latest/download/install.sh"
+CHAN="%s"
+MIRRORS=("" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/")
+REL="latest"
+if [ "$CHAN" = "beta" ]; then
+  TAG=""
+  for M in "${MIRRORS[@]}"; do
+    AT="$(curl -fsSL --connect-timeout 15 --retry 1 "${M}https://github.com/${GH}/releases.atom" 2>/dev/null)" || continue
+    TAG="$(printf '%%s' "$AT" | grep -oE 'releases/tag/v[0-9A-Za-z._-]+' | sed 's#.*releases/tag/##' | grep -E -- '-(beta|rc|alpha)' | head -n1 || true)"
+    [ -n "$TAG" ] && break
+  done
+  [ -n "$TAG" ] || { echo "hich noskhe-ye beta peyda nashod (releases.atom)" >&2; exit 1; }
+  REL="$TAG"
+fi
+if [ "$REL" = "latest" ]; then PATH_SEG="releases/latest/download/install.sh"; else PATH_SEG="releases/download/${REL}/install.sh"; fi
 T="$(mktemp)"
 trap 'rm -f "$T"' EXIT
 ok=0
-for M in "" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/"; do
-  if curl -fsSL --connect-timeout 20 --retry 2 "${M}${URL}" -o "$T" 2>/dev/null; then ok=1; break; fi
+for M in "${MIRRORS[@]}"; do
+  if curl -fsSL --connect-timeout 20 --retry 2 "${M}https://github.com/${GH}/${PATH_SEG}" -o "$T" 2>/dev/null; then ok=1; break; fi
 done
 [ "$ok" = 1 ] || { echo "download install.sh az hameye mirror-ha shekast khord (filtering?)" >&2; exit 1; }
-RATHOLE_GH="$GH" bash "$T" --update
-''' % gh
+RATHOLE_GH="$GH" RATHOLE_RELEASE="$REL" bash "$T" --update
+''' % (gh, chan)
     try:
         r = subprocess.run(base + ["bash", "-c", remote],
                            capture_output=True, text=True, timeout=600)

@@ -29,6 +29,7 @@ RE_PW      = re.compile(r"^.{6,128}\Z")   # hdaghl 6 karaktr baraye ramz
 RE_EMAIL   = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,20}\Z")
 RE_PATH    = re.compile(r"^/[A-Za-z0-9_./-]{1,255}\Z")   # masir file gvahi (mtlgh)
 RE_SLUG    = re.compile(r"^[A-Za-z0-9._-]{1,64}/[A-Za-z0-9._-]{1,64}\Z")   # owner/repo-ye GitHub
+RE_CHAN    = re.compile(r"^(stable|beta)\Z")                                # kanal-e apdit-e hub
 RE_HEADER  = re.compile(r"^[A-Za-z0-9-]{1,40}\Z")   # naam-e header-e masiryabi-ye direct
 RE_BH_SRV  = re.compile(r"^(ws|wsmux)\Z")           # transport-e backhaul samt-e Iran (bedoon TLS)
 RE_BH_CLI  = re.compile(r"^(wss|wssmux)\Z")         # transport-e backhaul samt-e node (TLS be nginx:443)

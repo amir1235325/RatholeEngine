@@ -9,6 +9,20 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-30
+
+release-e paydar (stable). channel-e beta (v1.6.0-beta.1..7) be onvan-e 1.6.0 promote shod.
+in release DGHIGHAN moshkeli ra mibandad ke server-haye beta ra downgrade mikard va backhaul ra kharab.
+
+### Fixed
+- **downgrade-e mokharreb az dokme-ye «apdit»-e hub:** `deploy_to_server` (hub.py) koorkoorane `releases/latest/download/install.sh` ra migereft va hich `RATHOLE_RELEASE` pass nemidad. chon hameye `v1.6.0-beta.*` dar GitHub **prerelease** hastand، `releases/latest` be **v1.5.1** (ghabl az backhaul) resolve mishod — pas har server-e beta ba yek click be v1.5.1 downgrade mishod، `ratholectl`-e ghadimi state-e node-haye `.transport=backhaul` ra namishenakht va `gen_server_toml` port-e anha ra dobare bind mikard → **tunnel-e backhaul az beyn miraft**. hala `deploy_to_server` channel-agah ast: `update_channel` (stable|beta، pishfarz stable) ra az config mikhanad va baraye beta tag-e prerelease ra rooye khode server az `releases.atom` (mirror-agah، hamsan-e resolve_beta_tag) peyda karde va `RATHOLE_RELEASE` pass midahad.
+- **gard-e zed-e downgrade dar `update.sh`:** ghabl az har taghir، `MANAGER_VERSION`-e baste-ye jadid ba noskhe-ye nasb-shode moghayese mishavad (semver-agah: `1.6.0 > 1.6.0-beta.7 > 1.5.1`). agar baste ghadimi-tar bashad، update **rad mishavad** va hich taghiri anjam nemidahad — magar `--allow-downgrade` (ya `RATHOLE_ALLOW_DOWNGRADE=1`). in class-e khata ra az HAR masir (hub/CLI/curl) baraye hamishe mibandad.
+
+### Changed
+- `MANAGER_VERSION` az `1.6.0-beta.7` be `1.6.0` (stable).
+- config-e hub yek kelid-e jadid-e `update_channel` (stable|beta) darad؛ `RE_CHAN` an ra etebarsanji mikonad.
+- UI-e hub: bakhsh-e «masir-ha (path)» — kelid-haye i18n-e fa/en baraye masir-e subscription va masir-e panel-e hub.
+
 ## [1.6.0-beta.5] - 2026-07-27
 
 ## [1.6.0-beta.1] - 2026-07-26

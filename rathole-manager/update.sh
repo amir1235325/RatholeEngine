@@ -30,6 +30,7 @@ die(){ err "$*"; exit 1; }
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/rathole-manager}"
 RETENTION="${RATHOLE_BACKUP_RETENTION:-7}"     # tedad snapshot-e negahdari-shode
 AUTO_ROLLBACK=1                                 # ba --no-rollback khamoosh mishavad
+ALLOW_DOWNGRADE="${RATHOLE_ALLOW_DOWNGRADE:-0}" # ba --allow-downgrade (ya env) gard-e zed-e downgrade khamoosh mishavad
 
 # ---------- pars-e argvman (flag-haye ma jda az flag-haye init) ----------
 DO_ROLLBACK=0; ROLLBACK_TS=""; DO_LIST=0
@@ -41,6 +42,7 @@ while [ $# -gt 0 ]; do
                      if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then ROLLBACK_TS="$1"; shift; fi ;;
     --list-backups)  DO_LIST=1; shift ;;
     --no-rollback)   AUTO_ROLLBACK=0; shift ;;
+    --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
     *)               PASS_ARGS+=("$1"); shift ;;
   esac
 done
@@ -56,6 +58,87 @@ detect_roles(){
   { [ -f /opt/ratholehub/hub.py ] || [ -f /etc/systemd/system/ratholehub.service ]; } && HUB=1
   return 0   # MOHEM: bدون in، agar akharin test false bashad (mesl-e server-e bدون-hub) tabe ba rc=1
              # barmigardad va zir-e `set -e` kolle update.sh bی-seda exit mishavad.
+}
+
+# ---------- gard-e zed-e downgrade ----------
+# CHERA: dokme-ye «apdit»-e hub (ya `update` bدون kanal) mitavanad be releases/latest biyoftad
+# ke pre-release ha ra nadide migirad — pas rooye server-e beta be noskhe-ye ghadimi-tar (mesl v1.5.1)
+# downgrade mikonad. noskhe-ye ghadimi backhaul/features-e jadid ra namishenasad → state kharab،
+# tunnel-e backhaul az beyn miravad. in gard baste-ye ghadimi-tar az nasb-shode ra rad mikonad.
+
+# noskhe-ye nasb-shode ra az common.sh-e faal (ya CLI) migirad. khali agar peyda nashavad.
+installed_version(){
+  local f
+  for f in /usr/local/share/rathole/common.sh /usr/local/bin/common.sh; do
+    [ -f "$f" ] || continue
+    sed -n 's/^\s*MANAGER_VERSION="\?\([^"[:space:]]\+\)"\?.*/\1/p' "$f" | head -n1
+    return 0
+  done
+  return 0
+}
+
+# noskhe-ye baste-ye jadid (SCRIPT_DIR/common.sh). khali agar nabashad.
+bundle_version(){
+  local f="$SCRIPT_DIR/common.sh"
+  [ -f "$f" ] || return 0
+  sed -n 's/^\s*MANAGER_VERSION="\?\([^"[:space:]]\+\)"\?.*/\1/p' "$f" | head -n1
+}
+
+# ver_lt A B → return 0 (true) agar A az B kamtar (ghadimi-tar) bashad.
+# semver-agah: 1.6.0 > 1.6.0-beta.7 > 1.5.1 . pre-release (-beta/-rc/-alpha) az release-e
+# hamان-adad kamtar ast. adad-ha adadi moghayese mishavand (na alefبایی: 10 > 9).
+# do reshte-ye dot-jodashode (mesl "1.6.0" ya "beta.7") ra field-be-field moghayese mikonad.
+# echo mikonad: -1 (A<B), 0 (barabar), 1 (A>B). field-e adadi adadi (10>9)، gheyr-adadi rشته-i.
+_fields_cmp(){
+  local IFS=. ; local -a fa=($1) fb=($2); unset IFS
+  local i n=${#fa[@]}; [ ${#fb[@]} -gt "$n" ] && n=${#fb[@]}
+  for ((i=0; i<n; i++)); do
+    local x="${fa[i]:-0}" y="${fb[i]:-0}"
+    if [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]]; then
+      ((10#$x < 10#$y)) && { echo -1; return; }
+      ((10#$x > 10#$y)) && { echo 1; return; }
+    else
+      [[ "$x" < "$y" ]] && { echo -1; return; }
+      [[ "$x" > "$y" ]] && { echo 1; return; }
+    fi
+  done
+  echo 0
+}
+ver_lt(){
+  local a="$1" b="$2"
+  [ "$a" = "$b" ] && return 1
+  # bخsh-e core (ghabl az '-') va pre (baad az '-') ra joda kon
+  local a_core="${a%%-*}" b_core="${b%%-*}"
+  local a_pre="" b_pre=""
+  case "$a" in *-*) a_pre="${a#*-}";; esac
+  case "$b" in *-*) b_pre="${b#*-}";; esac
+  # moghayese-ye core (major.minor.patch...) adadi، field be field
+  local c; c="$(_fields_cmp "$a_core" "$b_core")"
+  [ "$c" = -1 ] && return 0
+  [ "$c" = 1 ]  && return 1
+  # core-ha barabar-and → pre-release moghayese: «bدون pre» boزorgtar az «ba pre» ast
+  if [ -z "$a_pre" ] && [ -n "$b_pre" ]; then return 1; fi   # A release، B pre → A > B
+  if [ -n "$a_pre" ] && [ -z "$b_pre" ]; then return 0; fi   # A pre، B release → A < B
+  if [ -n "$a_pre" ] && [ -n "$b_pre" ]; then
+    [ "$(_fields_cmp "$a_pre" "$b_pre")" = -1 ] && return 0
+  fi
+  return 1
+}
+
+# gard: agar baste ghadimi-tar az nasb-shode bashad va --allow-downgrade nabashad، exit.
+downgrade_guard(){
+  [ "$ALLOW_DOWNGRADE" = 1 ] && { warn "gard-e zed-e downgrade khamoosh ast (--allow-downgrade)."; return 0; }
+  local inst pkg; inst="$(installed_version)"; pkg="$(bundle_version)"
+  # agar nasb-e avalie ast (inst khali) ya baste version nadarad، gard rd mishavad.
+  [ -z "$inst" ] && return 0
+  [ -z "$pkg" ] && { warn "baste MANAGER_VERSION nadarad؛ gard-e downgrade rad shod."; return 0; }
+  if ver_lt "$pkg" "$inst"; then
+    err "DOWNGRADE mahdood shod: baste ($pkg) ghadimi-tar az noskhe-ye nasb-shode ($inst) ast."
+    err "in ehtemalan az 'releases/latest' amade ke pre-release ha ra nadide migirad (chیزi ke backhaul ra kharab mikonad)."
+    err "agar VAGHEAN mikhahi downgrade koni: sudo bash update.sh --allow-downgrade  (ya RATHOLE_ALLOW_DOWNGRADE=1)"
+    die "update motevaghef shod (hich taghiri anjam nashod)."
+  fi
+  log "gard-e version: baste ($pkg) >= nasb-shode ($inst) — edame."
 }
 
 # ---------- masir-haye har naghsh baraye snapshot (faghat mojood-ha chap mishavand) ----------
@@ -388,12 +471,16 @@ ROLES=()
 
 if [ "${#ROLES[@]}" -eq 0 ]; then
   warn "nh panel, nh node va nh hub tashkhis dade nashod. agar nasb avlih ast az install-panel.sh / install-node.sh / ratholehub/install-hub.sh estefade kon."
+  # gard-e zed-e downgrade ghabl az har taghir (hata bدون snapshot).
+  downgrade_guard
   # ham-chenan CLI ra beroozresani mikonim (bدون snapshot chون chizi nist)
   apply_update "$@"
   exit 0
 fi
 
 log "naghsh-haye tashkhis-dade-shode: ${ROLES[*]}"
+# gard-e zed-e downgrade: GHABL az snapshot/apply — agar baste ghadimi-tar bashad hich kar nemikonim.
+downgrade_guard
 SNAP_DIR="$(snapshot_now "${ROLES[@]}")"
 [ -n "$SNAP_DIR" ] || warn "snapshot gerefte nashod؛ update bدون emkan-e rollback edame miyabad."
 
