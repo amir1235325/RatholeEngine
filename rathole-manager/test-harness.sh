@@ -2,21 +2,47 @@
 # harns tst mahalli baraye ratholectl bedoon niaz be root/systemd/nginx vaghai
 set -uo pipefail
 
-BASE="/mnt/d/MohammadHosein/projectsupertunnel/rathole-manager"
-ROOT="$(mktemp -d)"
+# BASE khod-tashkhis ast (ghablan masir-e sabet-e WSL bood va rooye MINGW/Linux kar nemikard).
+BASE="${BASE:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)}"
+# sandbox: rooye MSYS/MINGW (Git-Bash-e Windows) masir-e `/tmp` majazi ast va abzar-haye
+# NATIVE-e Windows (jq-e choco/scoop) an ra be C:/Users/.../Temp tarjome mikonand ke vojood
+# nadarad → hameye test-ha bi-dalil FAIL mishavand. pas anja sandbox ra KENAR-e repo mizanim
+# ta har do (bash va jq-e native) yek masir bebinand. rooye Linux/WSL hamon /tmp.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) ROOT="$(mktemp -d "$BASE/.harness-XXXXXX")" ;;
+  *)                    ROOT="$(mktemp -d)" ;;
+esac
+trap 'rm -rf "$ROOT"' EXIT
 mkdir -p "$ROOT/bin" "$ROOT/etc/rathole" "$ROOT/etc/rathole-manager" "$ROOT/etc/nginx/conf.d"
 
-# jq ra dar sandbox/bin gharar bdh va rooye PATH bgzar
-cp "$BASE/jq-linux" "$ROOT/bin/jq"; chmod +x "$ROOT/bin/jq"
-export PATH="$ROOT/bin:$PATH"
+# jq: agar jq-linux (binary-e ELF baraye WSL/Linux) knar-e script bashad az an estefade kon
+# va rooye PATH bgzar. vagarna jq-e sistem ra hamon ja ke hast bekar begir — kopi/symlink
+# NAKON: rooye Windows (choco/scoop) jq yek "shim" ast va kopi-ash "Cannot open shim file"
+# midahad، ke baaes mishavad HAMEYE test-ha bi-dalil FAIL shavand.
+if [ -f "$BASE/jq-linux" ] && head -c4 "$BASE/jq-linux" 2>/dev/null | grep -q ELF; then
+  cp "$BASE/jq-linux" "$ROOT/bin/jq"; chmod +x "$ROOT/bin/jq"
+  export PATH="$ROOT/bin:$PATH"
+elif command -v jq >/dev/null 2>&1; then
+  :   # jq-e sistem rooye PATH ast — dast nazan
+else
+  echo "khata: jq peyda nashod (na jq-linux-e ELF knar-e script، na dar PATH)."; exit 1
+fi
+jq --version >/dev/null 2>&1 || { echo "khata: jq ejra nashod."; exit 1; }
 echo "sandbox: $ROOT ; jq: $(jq --version)"
 
-# nskhh tst az ratholectl ba msirhai sandbox va bedoon kht akhr (main)
+# common.sh EJBARI ast: ratholectl bedoon-e an (rth_commit_config/...) balaa nemiayad va
+# hala sarih die mikonad. pas knar-e nskhh-ye sandbox mizarimesh ta SCRIPT_DIR peydash konad.
+sed 's/\r$//' "$BASE/common.sh" > "$ROOT/common.sh"
+
+# nskhh tst az ratholectl ba msirhai sandbox.
+# ratholectl khodesh hook-e RATHOLECTL_LIB_ONLY darad (khat-e akhar: agar 1 bashad main seda
+# nemishavad) — pas digar niaz be hazf-e 'main "$@"' ba sed nist. sed-e ghadimi donbal-e
+# '^main "$@"$' migasht ke dige vojood nadarad، pas HAR farakhani be main miraft va hameye
+# test-ha "dstvr nashenakhte" midadand.
 sed \
   -e "s#^STATE=.*#STATE=\"$ROOT/etc/rathole-manager/state.json\"#" \
   -e "s#^SERVER_TOML=.*#SERVER_TOML=\"$ROOT/etc/rathole/server.toml\"#" \
   -e "s#^NGINX_CONF=.*#NGINX_CONF=\"$ROOT/etc/nginx/conf.d/rathole.conf\"#" \
-  -e '/^main "\$@"$/d' \
   -e 's/\r$//' \
   "$BASE/ratholectl" > "$ROOT/ratholectl.lib"
 
@@ -26,6 +52,9 @@ cat > "$RUN" <<EOF
 #!/usr/bin/env bash
 set -uo pipefail
 export PATH="$ROOT/bin:\$PATH"
+# LIB_ONLY: jelo-ye ejra-ye main hangam-e source ra migirad (vagarna "\$@"-e run.sh be
+# dispatcher-e ratholectl mirasad va hameh "dstvr nashenakhte" mishavad).
+export RATHOLECTL_LIB_ONLY=1
 source "$ROOT/ratholectl.lib"
 # khnsisazi tavabe niazmnd system vaghai
 need_root(){ :; }
@@ -38,8 +67,9 @@ chmod +x "$RUN"
 line(){ echo "=============================================="; echo "$*"; echo "=============================================="; }
 
 line "tst 1: init gheyre-taamoli"
-# aval-e input: pasokh be prompt-e 'restore file' (khali = nasb-e tazh), sepas damnh va baghi.
-printf '\nbtli.ir\n/tmp/fc.pem\n/tmp/key.pem\n\n2333\n8080\n2096\n1001\n7001\n' | bash "$RUN" cmd_init
+# BA FLAG (na pipe): rth_read amdan az /dev/tty mikhanad (fix-e curl|bash)، pas pipe kardan-e
+# javab-ha be stdin dige kar nemikonad va init nim-kare mimand → hameye test-haye baadi FAIL.
+bash "$RUN" cmd_init --domain btli.ir --fullchain /tmp/fc.pem --key /tmp/key.pem
 echo "--- state.json ---"; jq . "$ROOT/etc/rathole-manager/state.json"
 
 line "tst 2: afzoodan se node (usa01 ba api)"

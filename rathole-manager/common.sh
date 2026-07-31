@@ -40,14 +40,40 @@ resolve_beta_tag(){
 # neveshtan-e amn-e in-place ba lock-e sidecar (hefz inode baraye hot-reload-e rathole).
 # $1 = file-e movaqqat (generated); $2 = file-e live (masir-e vaghei config).
 # agar src khali bashad (0 byte) rad mikonad ta rathole config-e naghes nabinad.
+# flock hamishe mojood nist (image-e minimal bedoon-e util-linux، MSYS/Git-Bash). ghablan
+# nabudanash BI-SEDA ghofl ra az beyn mibord: `flock: command not found` be stderr miraft
+# vali subshell rc=0 barmigardand — pas `|| return 1` fael nemishod va config BEDOON-e ghofl
+# neveshte mishod. do neveshtan-e hamzaman → config-e nim-kare ke rathole hot-reload mikonad.
+# pas yek bar tashkhis midahim va agar nabood az mkdir (atomic dar POSIX) ghofl misazim.
+_RTH_HAS_FLOCK=""
+_rth_has_flock(){
+  [ -n "$_RTH_HAS_FLOCK" ] || { command -v flock >/dev/null 2>&1 && _RTH_HAS_FLOCK=1 || _RTH_HAS_FLOCK=0; }
+  [ "$_RTH_HAS_FLOCK" = 1 ]
+}
+
 rth_commit_config(){
   local src="$1" dst="$2" lock="${2}.lock"
   [ -s "$src" ] || { err "config-e jadid khali ast: $src"; return 1; }
   mkdir -p "$(dirname "$dst")"
-  (
-    flock -x 9
-    cat "$src" > "$dst"
-  ) 9>"$lock" || return 1
+  if _rth_has_flock; then
+    (
+      flock -x 9
+      cat "$src" > "$dst"
+    ) 9>"$lock" || return 1
+  else
+    # fallback-e portable: mkdir atomic ast. ta ~5 sanie montazer mimanim؛ agar ghofl azad
+    # nashod (masalan process-e ghabli mord va lockdir mande) HOSHDAR midahim va edame —
+    # gir kardan-e hamishegi bad-tar az neveshtan-e bedoon-e ghofl ast.
+    local d="${dst}.lockd" i=0 held=0 rc=0
+    while [ "$i" -lt 50 ]; do
+      if mkdir "$d" 2>/dev/null; then held=1; break; fi
+      i=$((i+1)); sleep 0.1 2>/dev/null || sleep 1
+    done
+    [ "$held" -eq 1 ] || warn "ghofl-e '$dst' azad nashod (timeout); bedoon-e ghofl minevisam."
+    cat "$src" > "$dst" || rc=1
+    [ "$held" -eq 1 ] && rmdir "$d" 2>/dev/null
+    [ "$rc" -eq 0 ] || return 1
+  fi
   rm -f "$src"
 }
 
@@ -188,4 +214,38 @@ UNIT
     rm)     systemctl disable --now "$svc" 2>/dev/null || true; rm -f "/etc/systemd/system/${svc}.service"; systemctl daemon-reload; log "hazf shod." ;;
     status) systemctl --no-pager status "$svc" | sed -n '1,8p' || true ;;
   esac
+}
+# ---------------------------------------------------------------------------
+# jam-avari-ye log baraye eshkal-zodai (`ratholectl logs` / `ratholenode logs`)
+# ---------------------------------------------------------------------------
+# HOSHDAR-E AMNIATI: khorooji-ye in tavabe maamoolan dar chat/issue paste mishavad.
+# har chizi ke token/kelid/ramz ast BAYAD az inja rad shavad. rth_redact tanha
+# darvaze-ye khorooj ast — har file-e jadidi ke ezafe mikoni HATMAN az an rad kon.
+rth_redact(){
+  sed -E \
+    -e 's/("(token|api_token|bh_token|backhaul_token|admin_password_sha256|password|secret|private_key|local_private_key|remote_public_key|noise_private_key)"[[:space:]]*:[[:space:]]*")[^"]*"/\1***REDACTED***"/g' \
+    -e 's/^([[:space:]]*(token|default_token|password|secret|private_key|local_private_key|remote_public_key)[[:space:]]*=[[:space:]]*")[^"]*"/\1***REDACTED***"/' \
+    -e 's/^([[:space:]]*(TOKEN|BH_TOKEN|NOISE_KEY|PASSWORD|API_TOKEN)=).*/\1***REDACTED***/' \
+    -e 's#(/_rh/)[A-Fa-f0-9]{8,}#\1***REDACTED***#g' \
+    -e 's/([?&](token|password|secret)=)[^&"[:space:]]*/\1***REDACTED***/g'
+}
+
+# yek bakhsh-e onvan-dar dar khorooji-ye log
+rth_sec(){ printf '\n===== %s =====\n' "$*"; }
+
+# log-e yek unit-e systemd (agar vojood dashte bashad)
+rth_unit_log(){ # $1=unit  $2=tedad khat
+  local u="$1" n="${2:-80}"
+  systemctl list-unit-files "$u.service" >/dev/null 2>&1 || return 0
+  [ -f "/etc/systemd/system/$u.service" ] || [ -f "/lib/systemd/system/$u.service" ] || return 0
+  rth_sec "unit: $u  (halat: $(systemctl is-active "$u" 2>/dev/null || echo unknown)/$(systemctl is-enabled "$u" 2>/dev/null || echo n/a))"
+  journalctl -u "$u" -n "$n" --no-pager 2>/dev/null | rth_redact || true
+}
+
+# mohtava-ye yek file-e config (redact-shode)
+rth_file_dump(){ # $1=barchasb  $2=masir  [$3=hadaksar khat]
+  local label="$1" p="$2" n="${3:-200}"
+  [ -f "$p" ] || { rth_sec "$label ($p) — NIST"; return 0; }
+  rth_sec "$label ($p)"
+  head -n "$n" "$p" 2>/dev/null | rth_redact || true
 }
