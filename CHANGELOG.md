@@ -9,6 +9,52 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-07-31
+
+release-e paydari (hardening). se class-e khata ke mitavanest BI-SEDA dade ya config ra
+kharab konad basteh shod، be-alave-ye ayb-yabi-ye behtar-e doctor/log.
+
+### Fixed
+- **nabudan-e `state.json` ba yek jq-e shekast-khorde:** `state_set` khorooji-e jq ra check
+  nemikard va `mv` ra BI-GHARAR anjam midad. chon script-ha ba `set -uo pipefail` (amdan
+  bedoon-e `-e`) ejra mishavand، shekast-e jq motevaghef nemikard — pas har state-e nim-kharab،
+  jq-path-e ghalat ya disk-e por، `state.json` ra ba file-e KHALI jaygozin mikard va hameye
+  node/token/port az beyn miraft. hala jq-e shekast-khorde ya khorooji-e khali GHABL az `mv`
+  rad mishavad. (baghye-ye 12 noghte-ye jq dar hamin file az ghabl `&& mv` dashtand — faghat
+  `state_set`، ke por-estefade-tarin mutator ast، nadasht.)
+- **ghofl-e az-dast-rafte-ye `rth_commit_config` rooye sistem-haye bedoon-e flock:**
+  `flock: command not found` be stderr miraft vali subshell rc=0 barmigardand، pas
+  `|| return 1` fael nemishod va config BEDOON-e ghofl neveshte mishod. fallback-e portable
+  ba `mkdir` (atomic dar POSIX) ezafe shod.
+- **nabudan-e ghofl rooye mutation-haye state (lost update / TOCTOU):** hub yek
+  ThreadingHTTPServer ast va action-ha ra HAMZAMAN ejra mikonad، dar hali ke har mutator
+  alghoye khandan→neveshtan darad (`next_port` → jq read → jq write). ba 4 `add`-e hamzaman:
+  **2 node az 4 gom shod va HAR DO baghimande port-e 1001 gereftand** (do bind_addr-e yeksan
+  → dovomi bala nemiayad). hala kol-e dastoor zir yek ghofl ejra mishavad (flock ba fallback-e
+  mkdir)، ham samt-e Iran ham samt-e node. baad az fix: 4/4 node، port-haye 1001..1004، sefr tekrari.
+- **probe-haye WS-e doctor bedoon-e `--max-time` gir mikardand:** baad az upgrade-e movaffagh
+  (101) curl ta abad montazer-e baste shodan-e etesal mimand. hala hameye probe-ha zaman-dar
+  hastand va dastoor-haye tashkhisi samt-e SERVER ham ba `timeout` pichide mishavand (agar
+  SSH samt-e hub timeout shavad، process-e rooye server nabayad zende bemanad).
+
+### Added
+- `ratholectl logs [n]` / `ratholenode logs all [n]` + dokme-ye log dar hub.
+
+### Changed
+- `c_g/c_r/c_y/log/warn/err/die/need_root/kcp_profile` digar dar CLI-ha copy NEMISHAVAND —
+  tanha manba-eshan `common.sh` ast. ghablan har se file copy-e yeksan dashtand va chon
+  `source` GHABL az tarif bood، copy-e CLI barande mishod: yani **virayesh-e `common.sh`
+  bi-asar bood**. baraye `kcp_profile` in fajee ast chon parametr-haye FEC bayad DO taraf
+  daghighan yeksan bashand. gard-e sarih ezafe shod: agar `common.sh` load nashode bashad
+  CLI ba payam-e roshan mimirad (an tavabe fallback nabudand — `rth_commit_config` va
+  `install_backhaul` faghat dar `common.sh` hastand).
+- `test-harness.sh` tamir shod: (1) `sed` donbal-e `main "$@"` migasht ke digar vojood
+  nadarad (kod hook-e `RATHOLECTL_LIB_ONLY` darad)، pas HAR farakhani be dispatcher miraft va
+  **hameye test-ha no-op boodand**؛ (2) init javab-ha ra pipe mikard dar hali ke `rth_read`
+  amdan az `/dev/tty` mikhanad (fix-e curl|bash)، pas init nim-kare mimand. hamchenin BASE
+  khod-tashkhis shod va sandbox rooye MSYS knar-e repo sakhte mishavad (jq-e native masir-e
+  majazi-ye `/tmp` ra nemibinad). natije: az 6 OK/14 FAIL be 19 OK/1 FAIL.
+
 ## [1.6.2] - 2026-07-30
 
 upstream-ha hala shahrvand-e daraje-yek hastand (hamel + log + status mesl-e tunnel-e asli)،
