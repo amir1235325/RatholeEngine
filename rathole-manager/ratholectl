@@ -1055,13 +1055,19 @@ print_node_install(){
 
 # ---------- abzarhaye taghir dar tvl zman ----------
 state_set(){ # $1=jqpath $2=value $3=type(str|num)
-  local tmp; tmp="$(mktemp)"
+  # BEHRANI: ghablan khorooji-e jq check nemishod va `mv` BI-GHARAR anjam mishod — pas har
+  # shekast-e jq (state-e kharab, jq-path-e ghalat, disk-e por) state.json ra ba yek file-e
+  # KHALI jaygozin mikard va HAMEYE node/token/port az beyn miraft. chon script ba `set -uo
+  # pipefail` (bedoon -e) ejra mishavad, khatta-ye jq khod-be-khod motevaghef nemikard.
+  local tmp; tmp="$(rth_mktemp)" || die "sakht-e file-e movaghat nashod."
   if [ "${3:-str}" = num ]; then
     echo "$2" | grep -qE '^[0-9]+$' || die "meghdar bayad adad bashad: $2"
-    jq "$1 = ($2)" "$STATE" > "$tmp"
+    jq "$1 = ($2)" "$STATE" > "$tmp" || die "jq shekast khord؛ state dast-nakhorde mand."
   else
-    jq --arg v "$2" "$1 = \$v" "$STATE" > "$tmp"
+    jq --arg v "$2" "$1 = \$v" "$STATE" > "$tmp" || die "jq shekast khord؛ state dast-nakhorde mand."
   fi
+  # file-e khali ya nim-kare HARGEZ nabayad jaygozin-e state shavad.
+  [ -s "$tmp" ] || die "khorooji-e jq khali bood؛ state dast-nakhorde mand."
   mv "$tmp" "$STATE"
 }
 
