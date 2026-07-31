@@ -232,7 +232,7 @@ def hub_status():
 from hubcmds import (  # noqa: F401  (nam-ha dar sartasar-e hub estefade mishavand)
     RE_NAME, RE_HOST, RE_PORT, RE_PROFILE, RE_IPPORT, RE_KEY, RE_B64, RE_ID, RE_PW,
     RE_EMAIL, RE_PATH, RE_SLUG, RE_HEADER, RE_BH_SRV, RE_BH_CLI, RE_BH_TOK, RE_CHAN,
-    build_iran_cmd, build_node_cmd, build_cmd, WRITE_ACTIONS,
+    build_iran_cmd, build_node_cmd, build_cmd, WRITE_ACTIONS, _diag,
 )
 
 # ---------- ejra-ye az rah dvr (SSH) ----------
@@ -444,6 +444,10 @@ def provision_server(d):
     return {"rc": 0, "out": "\n\n".join(logs) + note, "err": ""}
 
 def mock_run(server, cmd_args):
+    # prefix-e mohafez ('timeout N ...') baraye tatbigh-e mock bi-marbut ast — bardar.
+    # (dar vaghe-iat SSH an ra ejra mikonad؛ inja faghat naghshe-ye dastoor mohem ast.)
+    if len(cmd_args) >= 3 and cmd_args[0] == "timeout":
+        cmd_args = cmd_args[2:]
     j = " ".join(cmd_args)
     role = server.get("role")
 
@@ -515,6 +519,17 @@ def mock_run(server, cmd_args):
                 "OK  node trk01 rooye port 1005 amade ast\n"
                 "WARN node gamenodetrk rooye port 1007 gvsh nmidhd (klaint node vsl nist?)\n"
                 "khlash: OK=3  FAIL=1", "err": ""}
+    if cmd_args[:2] == ["ratholectl", "logs"] or cmd_args[:3] == ["ratholenode", "logs", "all"]:
+        # nemune-ye kutah: sakhtar-e vaghei + neshan dadan-e inke token-ha REDACT shode-and.
+        return {"rc": 0, "out":
+                "\n===== kolli =====\n"
+                "naghsh      : %s\nratholectl  : manager_version=1.6.3\n"
+                "\n===== unit: rathole-server  (halat: active/enabled) =====\n"
+                "Jul 31 12:00:01 rp01 rathole[811]: control channel established\n"
+                "\n===== state.json (/etc/rathole-manager/state.json) =====\n"
+                "{\"domain\":\"rp01.l1t.ir\",\"nodes\":[{\"name\":\"trk01\",\"token\":\"***REDACTED***\"}]}\n"
+                "\n===== payan =====" % ("panel (Iran)" if role == "iran" else "node (kharej)"),
+                "err": ""}
     if j == "ratholenode ls":
         return {"rc": 0, "out": "tunnel be: rp01.l1t.ir:443  (hame serviceha rooye yek channel kontroli)\n"
                 "SERVICE          INBOUND    TOKEN\n-------------------------------------------\n"
@@ -1122,7 +1137,11 @@ class Handler(BaseHTTPRequestHandler):
             ov["plain"] = parse_plain_status(R(["ratholectl", "plain", "status"]).get("out", ""))
             ov["direct"] = parse_direct_status(R(["ratholectl", "direct", "status"]).get("out", ""))
             ov["game"] = parse_game_ls(R(["ratholectl", "game", "ls"]).get("out", ""))
-            ov["health"] = parse_doctor(R(["ratholectl", "doctor"]).get("out", ""))
+            # doctor DAR overview: hatman ba mohafez-e timeout. probe-haye websocket-e doctor
+            # mitavanand samt-e server gir konand (101 = connection-e baz mimanad) va an vaght
+            # HAR bar-shodan-e safhe 120 sanie block mishod + yek process-e yatim rooye server
+            # ja migozasht. build_iran_cmd("doctor") khodesh `timeout 60` ra ezafe mikonad.
+            ov["health"] = parse_doctor(R(build_iran_cmd("doctor", {})).get("out", ""))
             ov["version"] = parse_version(R(["ratholectl", "version"]).get("out", ""))
             # status --json hameye port-ha (fake/sub/control/internal/hub/plain/noise/
             # backhaul/direct) ra yekja midahad — UI baraye safhe-ye tanzimat va check-e
@@ -1158,7 +1177,9 @@ class Handler(BaseHTTPRequestHandler):
         if role == "iran":
             cmds = [("ls", ["ratholectl", "ls"]), ("kcp status", ["ratholectl", "kcp", "status"]),
                     ("noise status", ["ratholectl", "noise", "status"]),
-                    ("game ls", ["ratholectl", "game", "ls"]), ("doctor", ["ratholectl", "doctor"])]
+                    # doctor inja ham ba mohafez: in safhe timeout=30 darad، pas dastoor-e
+                    # gir-karde bayad SAMT-E SERVER ham baste shavad، na faghat SSH-e mahalli.
+                    ("game ls", ["ratholectl", "game", "ls"]), ("doctor", _diag(["ratholectl", "doctor"], 25))]
         else:
             cmds = [("show", ["ratholenode", "show"]), ("kcp status", ["ratholenode", "kcp", "status"]),
                     ("noise status", ["ratholenode", "noise", "status"]),

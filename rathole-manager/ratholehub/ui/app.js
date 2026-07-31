@@ -260,6 +260,7 @@ function renderServerPage(n){
      ${s.role==='iran'?`<button class="g" onclick="statusModal('${h(n)}')">${t('status_btn')}</button>`:''}
      <button class="s" onclick="doDeploy('${h(n)}')">${t('update')}</button>
      <button class="s" onclick="run('${h(n)}','tune')">tune</button>
+     <button class="gh" onclick="doLogs('${h(n)}')">${t('logs_btn')}</button>
      <button class="gh" onclick="editServer('${h(n)}')">${t('edit_server')}</button>
      <button class="r" onclick="delSrvPage('${h(n)}')">${t('del_server')}</button>
    </div></div>`;
@@ -842,6 +843,28 @@ async function run(n,a,args){toast(t('running')+' '+a+' '+t('on')+' '+n+' …');
  else{toast(verdict+(body?(' — '+body):''));}
  loadOv(n);}
 async function doDeploy(n){if(!confirm(t('cf_deploy')+' '+n+' ?'))return; run(n,'deploy');}
+// ---------- jam-avari-ye log: khorooji-ye tolani → modal + dokme-ye download ----------
+// az run() joda ast chon (1) momken ast dah-ha kilobyte bashad va nabayad be toast beravad،
+// (2) loadOv() lazem nist (chizi taghir nakarde)، (3) zakhire dar file baraye ferestadan.
+// token-ha samt-e SERVER redact mishavand (rth_redact dar common.sh) — inja khaam nemiayad.
+async function doLogs(n){
+ toast(t('collecting_logs')+' '+n+' … ');
+ const {j}=await api('POST','api/servers/'+n+'/action',{action:'logs',args:{lines:'200'}});
+ const body=((j.out||'')+(j.err?('\n'+j.err):'')).trim()||JSON.stringify(j);
+ if(j&&j.rc===124){outModal('logs ✗','timeout — server javab nadad (dastoor samt-e server ba timeout baste shod).');return;}
+ const id='lg_'+Math.random().toString(36).slice(2);
+ modal('<h3>logs — '+h(n)+'</h3><pre id="'+id+'" style="max-height:52vh;overflow:auto;white-space:pre-wrap;user-select:text;-webkit-user-select:text">'+h(body)+'</pre>'
+  +'<div class="row" style="margin-top:10px"><button class="g" onclick="copyText(\''+id+'\')">'+t('copy_out')+'</button> '
+  +'<button class="s" onclick="dlLogs(\''+h(n)+'\',\''+id+'\')">'+t('download')+'</button> '
+  +'<button class="gh" onclick="closeModal()">'+t('close')+'</button></div>');
+}
+function dlLogs(n,id){
+ const el=document.getElementById(id); if(!el)return;
+ const b=new Blob([el.textContent],{type:'text/plain'});
+ const u=URL.createObjectURL(b), a=document.createElement('a');
+ a.href=u; a.download='rathole-logs-'+n+'-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'')+'.txt';
+ document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1000);
+}
 // apdit-e hamegani: hameye serverha ra YEKI-YEKI (tartibi) apdit mikonad va progress bar +
 // vaziat-e har server ra live neshan midahad. deploy = install.sh --update (snapshot+rollback-e khodkar).
 let UPD_BUSY=false;

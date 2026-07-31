@@ -37,12 +37,27 @@ RE_BH_TOK  = re.compile(r"^[A-Fa-f0-9]{16,64}\Z")   # token-e moshtarak-e backha
 # upstream-e reverse-proxy: DAGHIGHAN scheme://host:port — bedoon masir/query/metachar.
 # in meghdar mostaghim be conf-e nginx miravad، pas har chiz-e digar rad mishavad.
 RE_UPSTREAM = re.compile(r"^https?://[A-Za-z0-9._-]{1,255}:[0-9]{1,5}\Z")
+RE_LINES    = re.compile(r"^[0-9]{1,4}\Z")   # tedad-e khat-e log (hadaksar 9999)
+
+
+# ---------- defense-in-depth: har dastoor-e tashkhisi ba `timeout` pichide mishavad ----------
+# CHERA: vaghti SSH samt-e hub timeout mishavad، subprocess-e mahalli koshte mishavad AMMA
+# process-e rooye server ZENDE mimanad. yek dastoor-e gir-karde (masalan probe-e websocket-e
+# doctor ta ghabl az v1.6.3 ke rooye 101 baraye hamishe montazer mimand) ba har klik yek
+# process-e jadid roo ham jam mikard. `timeout` in ra samt-e SERVER mibandad.
+# adad HAMISHE sabet ast — hich vorodi-ye karbar be inja nemiresad.
+def _diag(argv, secs=90):
+    return ["timeout", str(int(secs))] + argv
 
 # ---------- whitelist dstvrha (bedoon shl dlkhvah) ----------
 # har action → sazndhi argumenthaye amn. brmigrdand list arg baraye CLI.
 def build_iran_cmd(action, a):
     if action == "ls":         return ["ratholectl", "ls"]
-    if action == "doctor":     return ["ratholectl", "doctor"]
+    if action == "doctor":     return _diag(["ratholectl", "doctor"], 60)
+    if action == "logs":
+        n = str(a.get("lines", "") or "200")
+        if not RE_LINES.match(n): return None
+        return _diag(["ratholectl", "logs", n], 150)
     if action == "kcp_status": return ["ratholectl", "kcp", "status"]
     if action == "kcp_off":    return ["ratholectl", "kcp", "off"]
     if action == "tune":       return ["ratholectl", "tune"]
@@ -272,6 +287,10 @@ def build_iran_cmd(action, a):
 def build_node_cmd(action, a):
     if action == "show":        return ["ratholenode", "show"]
     if action == "ls":          return ["ratholenode", "ls"]
+    if action == "logs":
+        n = str(a.get("lines", "") or "200")
+        if not RE_LINES.match(n): return None
+        return _diag(["ratholenode", "logs", "all", n], 150)
     if action == "upstream_ls": return ["ratholenode", "upstream", "ls"]
     if action == "kcp_status":  return ["ratholenode", "kcp", "status"]
     if action == "kcp_off":     return ["ratholenode", "kcp", "off"]

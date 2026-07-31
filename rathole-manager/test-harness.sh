@@ -162,4 +162,56 @@ bash "$RUN" cmd_direct on --header 'bad;header' 2>/dev/null && echo "FAIL: heade
 bash "$RUN" cmd_direct off >/dev/null
 jq -e '.direct_port // empty' "$ROOT/etc/rathole-manager/state.json" >/dev/null 2>&1 && echo "FAIL: direct_port baad az off munde" || echo "OK: off pak kard"
 
+line "tst 15: rth_probe — probe-e WS bayad ROOYE 101 ham BARGARDAD (regression-e v1.6.2)"
+# ta v1.6.2 probe-haye doctor --max-time nadashtand. tunnel-e SALEM 101 midahad va
+# connection ra BAZ negah midarad → curl abadi montazer mimand va `doctor` daghighan
+# vaghti hame chiz DOROST bood hang mikard (va hub ba SSH-timeout shekast mikhord).
+if command -v python3 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  cat > "$ROOT/ws101.py" <<'PYEOF'
+import socket, threading, time
+# CRLF ba chr() sakhte mishavad (na backslash-escape) ta hich laye-i (heredoc/editor/
+# tabdil-e CRLF-e Windows) natavanad kharabesh konad.
+CRLF = chr(13) + chr(10)
+RESP = (("HTTP/1.1 101 Switching Protocols" + CRLF +
+         "Upgrade: websocket" + CRLF +
+         "Connection: Upgrade" + CRLF +
+         "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" + CRLF + CRLF).encode())
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", 8791)); s.listen(8)
+def serve():
+    held = []
+    while True:
+        c, _ = s.accept(); c.recv(4096); c.sendall(RESP)
+        held.append(c)   # mesl-e tunnel-e vaghei: connection BASTE NEMISHAVAD
+threading.Thread(target=serve, daemon=True).start()
+time.sleep(60)
+PYEOF
+  python3 "$ROOT/ws101.py" >"$ROOT/ws101.err" 2>&1 & WSPID=$!
+  # montazer-e AMADEGI-ye fixture bemoon. NA ba curl — curl rooye 101 khodesh gir mikonad
+  # (haman bug!) va hich vaght exit-e sefr nemidahad. faghat TCP-connect ra check mikonim.
+  WSUP=0
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    if (exec 3<>/dev/tcp/127.0.0.1/8791) 2>/dev/null; then WSUP=1; break; fi
+    sleep 1
+  done
+  if [ "$WSUP" != 1 ]; then
+    echo "SKIP: fixture-e 8791 bala nayamad (port eshghal ast?) — $(head -3 "$ROOT/ws101.err" 2>/dev/null | tr '\n' ' ')"
+  else
+    WSH=(-H 'Connection: Upgrade' -H 'Upgrade: websocket'
+         -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==')
+    T0=$SECONDS
+    CODE="$(bash "$RUN" rth_probe "http://127.0.0.1:8791/" "dummy.invalid" "${WSH[@]}")"
+    EL=$((SECONDS-T0))
+    [ "$CODE" = 101 ] && echo "OK: 101 rooye channel-e salem tashkhis dade shod" || echo "FAIL: entezar 101, gereft '$CODE'"
+    [ "$EL" -le 8 ]   && echo "OK: probe mahdood ast (${EL}s) — hang nemikonad" || echo "FAIL: ${EL}s tool keshid (hanooz hang)"
+    # bug-e daghigh: `|| echo 000` ba exit-code-e 28-e --max-time "101000" misakht
+    [ "$CODE" = 101000 ] && echo "FAIL: regression-e concatenation (101000)" || echo "OK: bedoon-e concatenation-e '000'"
+    CODE2="$(bash "$RUN" rth_probe "http://127.0.0.1:9/" "dummy.invalid" "${WSH[@]}")"
+    [ "$CODE2" = 000 ] && echo "OK: port-e baste -> 000" || echo "FAIL: entezar 000, gereft '$CODE2'"
+  fi
+  kill $WSPID 2>/dev/null
+else
+  echo "SKIP: python3/curl nist"
+fi
+
 echo "SANDBOX=$ROOT"

@@ -38,13 +38,16 @@ BH_TOML="/etc/rathole/backhaul-server.toml"
 BH_SVC="rathole-backhaul-server"
 BH_UNIT="/etc/systemd/system/${BH_SVC}.service"
 
-c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
-c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
-c_y(){ printf '\033[1;33m%s\033[0m' "$*"; }
-log(){ printf '%s %s\n' "$(c_g '[+]')" "$*"; }
-warn(){ printf '%s %s\n' "$(c_y '[*]')" "$*"; }
-err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
-die(){ err "$*"; exit 1; }
+# TAVAJOH: c_g/c_r/c_y/log/warn/err/die/need_root/kcp_profile inja DOBARE tarif NEMISHAVAND —
+# tanha manba-eshan common.sh ast (bala source shod). ghablan har se file copy-e yeksan dashtand
+# va chon source ghabl az tarif bood, copy-e CLI barande mishod: yani virayesh-e common.sh
+# BI-ASAR bood. baraye kcp_profile in fajee ast — profile bayad DO taraf yeksan bashad.
+# common.sh EJBARI ast (rth_commit_config / install_backhaul / backhaul_mux_profile / ... faghat
+# anja hastand), pas agar load nashode bashad hamin ja ba payam-e roshan mimirim.
+if ! declare -F rth_commit_config >/dev/null 2>&1; then
+  printf '[!] common.sh load nashod (/usr/local/share/rathole/common.sh). nasb ra tekrar kon.\n' >&2
+  exit 1
+fi
 # read-e amn: agar stdin terminal nabashad (masalan curl|bash ya exec az bootstrap),
 # az /dev/tty bekhan ta prompt-haye taamoli kar konand. agar hich tty nabashad, khali.
 rth_read(){
@@ -58,7 +61,7 @@ rth_read(){
 has_tty(){ [ -t 0 ] || [ -r /dev/tty ]; }
 ask_yn(){ local a; rth_read a "$1 [y/N]: "; [[ "$a" =~ ^[Yy]$ ]]; }
 
-need_root(){ [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad (sudo)."; }
+# need_root dar common.sh ast (inja copy nemishavad — bebin tozih-e bala).
 need_bin(){ command -v "$1" >/dev/null 2>&1 || die "niaz be '$1' ast; aval install-panel.sh ra ejra kon."; }
 
 # ---------- tashkhis-e IP-e omomi-ye server (ba timeout-e kootah) ----------
@@ -1705,16 +1708,9 @@ install_kcptun(){ # $1=server|client  → nasb bainri dar /usr/local/bin/kcptun-
   log "kcptun-$role nasb shod: $bin"
 }
 
-# profile FEC → "datashard parityshard mode sndwnd rcvwnd"
-# balanced: ~30% afzvngi, aadi | lossy: afzvngi bala baraye loss ziad | aggressive: kmtrin ltnsi
-kcp_profile(){
-  case "${1:-balanced}" in
-    balanced)   echo "10 3 fast2 2048 2048" ;;
-    lossy)      echo "10 5 fast2 2048 2048" ;;
-    aggressive) echo "10 4 fast3 4096 4096" ;;
-    *) return 1 ;;
-  esac
-}
+# profile FEC ("datashard parityshard mode sndwnd rcvwnd") dar common.sh:kcp_profile ast —
+# amdan inja copy NEMISHAVAD: parametr-haye FEC bayad DAR DO TARAF (Iran va node) daghighan
+# yeksan bashand، pas bayad yek manba dashte bashand.
 
 cmd_kcp(){
   need_root; need_bin jq; ensure_state
@@ -2453,6 +2449,27 @@ print_backhaul_connect(){
   echo "nokte: profile ('${prof}') bayad DAR HAR DO taraf yeksan bashad vagarna parametrhaye SMUX nemikhanand."
 }
 
+# ---------- probe-e HTTP/WS ba timeout-e SAKHT (hich vaght hang nemikonad) ----------
+# CHERA timeout EJBARI ast: vaghti control-channel SALEM ast, nginx `101 Switching Protocols`
+# midahad va connection be yek tunnel-e do-tarafe tabdil mishavad ke HARGEZ baste nemishavad.
+# curl (ke websocket nemifahmad) montazer-e body-i mimanad ke nemiayad → `doctor` DAGHIGHAN
+# vaghti hame chiz DOROST ast baraye hamishe hang mikonad. ta ghabl az v1.6.2 in penhan bood
+# chon bedoon-e --http1.1 curl h2 mozakere mikard، nginx header-e Upgrade ra mindakht va
+# javab-e sari-e 200-e sait-e fik migereft (haman bug-e "false 200").
+# ba --max-time transfer ghat mishavad AMMA kod-e HTTP-e header-e daryaft-shode hefz mishavad.
+RTH_PROBE_T="${RTH_PROBE_TIMEOUT:-3}"
+rth_probe(){ # $1=url  $2=domain  $3...=header-haye ezafe  → kod HTTP (ya 000)
+  local url="$1" dom="$2"; shift 2
+  local code
+  code="$(curl -s --http1.1 --connect-timeout 3 --max-time "$RTH_PROBE_T" \
+          -o /dev/null -w '%{http_code}' -k "$@" \
+          "$url" --resolve "$dom:443:127.0.0.1" 2>/dev/null)"
+  # TALE: inja `|| echo 000` NAZAN. curl ba --max-time kod-e khorooji 28 midahad DAR HALI KE
+  # '101' ra ham chap karde — natije "101000" mishavad va hich vaght ba 101 barabar nist.
+  case "$code" in ''|*[!0-9]*) code=000 ;; esac
+  printf '%s' "$code"
+}
+
 # ---------- doctor: barresi slamt ----------
 cmd_doctor(){
 
@@ -2502,16 +2519,14 @@ cmd_doctor(){
     # MOHEM: --http1.1 EJBARI ast. bedoon-e an curl mitavanad HTTP/2 mozakere konad va
     # nginx header-e Upgrade ra dar h2 hazf mikonad → map be default (sait-e fik) miravad →
     # kod-e 200-e DOROUGHI (dar hali ke tunnel salem ast). in daghighan bug-e ghadimi bood.
-    root_code="$(curl -s --http1.1 -o /dev/null -w '%{http_code}' -k \
-      "https://$domain/" --resolve "$domain:443:127.0.0.1" 2>/dev/null || echo 000)"
+    # timeout dakhel-e rth_probe ast (tunnel-e salem connection ra baz negah midarad).
+    root_code="$(rth_probe "https://$domain/" "$domain")"
     echo "  drkhvast aadi be / → kd HTTP: $(c_y "$root_code") (bayad sait fik/panel ra bdhd)"
-    ws_root="$(curl -s --http1.1 -o /dev/null -w '%{http_code}' -k \
-      "${wsh[@]}" "https://$domain/" --resolve "$domain:443:127.0.0.1" 2>/dev/null || echo 000)"
+    ws_root="$(rth_probe "https://$domain/" "$domain" "${wsh[@]}")"
     echo "  websocket be / (fallback) → kd HTTP: $(c_y "$ws_root") (101=rthvl, ghir an=be fik rfth)"
     # channel-e VAGHEI ke node be an vasl mishavad: masir-e makhfi. 101 inja = salem.
     if [ "$cp" != "/" ]; then
-      ws_cp="$(curl -s --http1.1 -o /dev/null -w '%{http_code}' -k \
-        "${wsh[@]}" "https://$domain${cp}" --resolve "$domain:443:127.0.0.1" 2>/dev/null || echo 000)"
+      ws_cp="$(rth_probe "https://$domain${cp}" "$domain" "${wsh[@]}")"
       if [ "$ws_cp" = 101 ]; then
         printf '  %s control-path WS (%s) → 101 (kontrol salem)\n' "$(c_g 'OK ')" "$cp"; ok=$((ok+1))
       else
@@ -2523,6 +2538,80 @@ cmd_doctor(){
   fi
   echo
   echo "$(c_g "khlash:") OK=$ok  FAIL=$bad"
+}
+
+# ---------- logs: jam-avari-ye HAME chiz baraye eshkal-zodai ----------
+# estefade: ratholectl logs [tedad-khat] [--bundle]
+#   --bundle : khorooji ra dar yek file-e .txt.gz mizarad ta ba scp bardari
+# hameye token/kelid-ha ba rth_redact (common.sh) hazf mishavand — khorooji ghabel-e
+# eshterak-gozari ast. bara-ye khorooji-ye kham: hich — amdan rah nadarad.
+_logs_body(){
+  local n="$1" nconf
+  nconf="$(s_get '.nginx_conf' 2>/dev/null)"; case "$nconf" in ''|null) nconf="$NGINX_CONF" ;; esac
+
+  rth_sec "kolli"
+  printf 'tarikh      : %s\n' "$(date -Is 2>/dev/null)"
+  printf 'hostname    : %s\n' "$(hostname 2>/dev/null)"
+  printf 'naghsh      : panel (Iran)\n'
+  printf 'kernel      : %s\n' "$(uname -sr 2>/dev/null)"
+  printf 'os          : %s\n' "$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
+  printf 'ratholectl  : %s\n' "$(print_version panel 2>/dev/null | head -1)"
+  printf 'rathole     : %s\n' "$(/usr/local/bin/rathole --version 2>/dev/null || echo 'nist')"
+  printf 'nginx       : %s\n' "$(nginx -v 2>&1 || echo 'nist')"
+  printf 'uptime      : %s\n' "$(uptime -p 2>/dev/null)"
+
+  rth_sec "vaziat (status)"
+  cmd_status 2>&1 | rth_redact || true
+
+  rth_sec "barresi slamt (doctor)"
+  cmd_doctor 2>&1 | rth_redact || true
+
+  # ---- service-ha ----
+  local u
+  for u in "$RATHOLE_SVC" nginx ratholehub "$NOISE_SVC" "$BH_SVC" \
+           rathole-kcp-server "$PANEL_FAKEWEB_SVC"; do
+    rth_unit_log "$u" "$n"
+  done
+
+  rth_sec "nginx -t"
+  nginx -t 2>&1 | rth_redact || true
+  rth_sec "nginx error.log (akharin $n khat)"
+  tail -n "$n" /var/log/nginx/error.log 2>/dev/null | rth_redact || echo "(nist)"
+
+  rth_sec "port-haye baz (ss -ltnp)"
+  ss -ltnp 2>/dev/null | rth_redact || true
+
+  # ---- config-ha (redact-shode) ----
+  rth_file_dump "state.json"           "$STATE"        400
+  rth_file_dump "server.toml"          "$SERVER_TOML"  300
+  rth_file_dump "nginx rathole.conf"   "$nconf"        400
+  rth_file_dump "nginx upgrade-map"    "/etc/nginx/conf.d/rathole-upgrade-map.conf" 40
+  rth_file_dump "noise-server.toml"    "$NOISE_TOML"   120
+  rth_file_dump "backhaul-server.toml" "$BH_TOML"      120
+  rth_file_dump "nginx stream (SNI)"   "$STREAM_CONF"  200
+
+  rth_sec "payan"
+}
+
+cmd_logs(){
+  need_bin jq; ensure_state
+  local n=80 bundle=0 a
+  for a in "$@"; do
+    case "$a" in
+      --bundle) bundle=1 ;;
+      ''|*[!0-9]*) : ;;
+      *) n="$a" ;;
+    esac
+  done
+  if [ "$bundle" -eq 1 ]; then
+    local out; out="/tmp/rathole-logs-$(hostname -s 2>/dev/null || echo panel)-$(date +%Y%m%d-%H%M%S).txt.gz"
+    _logs_body "$n" 2>&1 | gzip -c > "$out" || die "sakht-e bundle shekast khord."
+    chmod 600 "$out"
+    log "bundle-e log sakhte shod: $out  ($(du -h "$out" 2>/dev/null | cut -f1))"
+    echo "  bardashtan az system-e khodet:  scp root@$(s_get '.domain'):$out ."
+  else
+    _logs_body "$n"
+  fi
 }
 
 # ---------- mnvi taamoli ----------
@@ -2546,6 +2635,7 @@ menu(){
     echo " 9) virayesh node (inbound/mdirit)"
     echo "10) chrkhsh token node"
     echo "11) taghir tanzimat srasri"
+    echo "12) jam-avari-ye log (baraye ferestadan be poshtiban)"
     echo " 0) khorooj"
     read -rp "entekhab: " ch
     case "$ch" in
@@ -2559,6 +2649,7 @@ menu(){
       6) read -rp "name node: " n; print_node_install "$n" ;;
       7) systemctl --no-pager status "$RATHOLE_SVC" nginx | sed -n '1,12p' || true ;;
       8) cmd_doctor ;;
+      12) cmd_logs --bundle ;;
       9) read -rp "name node: " n; read -rp "inbound jadid (khali=bedoon taghir): " ib
          read -rp "port mdirit jadid (off=khamvsh, khali=bedoon taghir): " ap
          args=("$n"); [ -n "$ib" ] && args+=(--inbound "$ib"); [ -n "$ap" ] && args+=(--api-port "$ap")
@@ -2629,6 +2720,7 @@ dstvrha:
   restore <file>               restore az backup + baztolid
   token <name>                 chap dstvr nasb node (curl yek-khatti + install-node.sh)
   doctor                       barresi slamt system va tmaiz sait fik/rthvl
+  logs [n] [--bundle]          log-e HAME chiz (service-ha + nginx + config-ha + doctor) — token-ha redact mishavand; --bundle = file-e .txt.gz baraye scp
   tune                         eemal BBR + limithaye system/nginx (rfa 502 zir burst)
   fakeweb <start|stop|rm|status> [port]   sait fik pishfarz rooye fake_port (rfa 502 rooye / dar srvrhai rlh)
   hub <on [port]|off|status>   panel web psht nginx zir haman damnh (masir pishfarz /hub/ — ba `set hub-path` avaz mishavad); bar-e aval hub ra khodkar nasb mikonad, baad faghat port avaz mikonad
@@ -2710,6 +2802,7 @@ main(){
     restore) cmd_restore "${1:-}" ;;
     token)  print_node_install "${1:-}" ;;
     doctor) cmd_doctor ;;
+    logs)   cmd_logs "$@" ;;
     tune)   cmd_tune ;;
     fakeweb) cmd_fakeweb "${1:-}" "${2:-}" ;;
     hub)    cmd_hub "${1:-}" "${2:-}" ;;
@@ -2732,4 +2825,35 @@ main(){
   esac
 }
 
-if [ "${RATHOLECTL_LIB_ONLY:-0}" != 1 ]; then main "$@"; fi
+# ---------- ghofl-e state (jelogiri az lost-update / TOCTOU) ----------
+# CHERA: hub yek ThreadingHTTPServer ast va mitavanad chand action ra HAMZAMAN rooye yek
+# server ejra konad (masalan chand click-e 'add node'). alghoye har mutator in ast:
+#   next_port -> jq mikhanad ... -> jq minevisad
+# beyn-e KHANDAN va NEVESHTAN yek process-e digar mitavanad haman port ra bardarad ya
+# hamon state ra bazneveshte konad. dar amal (test-e vaghei ba 4 'add'-e hamzaman):
+# az 4 node faghat 2 ta mand va HAR DO port-e 1001 gereftand → do bind_addr-e yeksan.
+# rah-e hal: KOL-e dastoor zir yek ghofl-e sarasari. dastoor-haye faghat-khandani
+# (ls/status/show/...) ham ghofl migirand — arzan ast va sadegi mohem-tar.
+# fallback-e mkdir baraye sistem-haye bedoon-e flock (hamsan-e rth_commit_config).
+RTH_LOCK="/run/ratholectl.lock"
+rth_with_lock(){
+  mkdir -p "$(dirname "$RTH_LOCK")" 2>/dev/null || RTH_LOCK="/tmp/ratholectl.lock"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$RTH_LOCK" 2>/dev/null || { "$@"; return $?; }
+    flock -w 30 9 || warn "ghofl-e state azad nashod (30s); edame midaham."
+    "$@"; local rc=$?
+    exec 9>&-
+    return $rc
+  fi
+  local d="${RTH_LOCK}.d" i=0 held=0
+  while [ "$i" -lt 300 ]; do
+    if mkdir "$d" 2>/dev/null; then held=1; break; fi
+    i=$((i+1)); sleep 0.1 2>/dev/null || sleep 1
+  done
+  [ "$held" -eq 1 ] || warn "ghofl-e state azad nashod (timeout); edame midaham."
+  "$@"; local rc=$?
+  [ "$held" -eq 1 ] && rmdir "$d" 2>/dev/null
+  return $rc
+}
+
+if [ "${RATHOLECTL_LIB_ONLY:-0}" != 1 ]; then rth_with_lock main "$@"; fi

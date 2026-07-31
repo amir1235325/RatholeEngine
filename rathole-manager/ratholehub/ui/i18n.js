@@ -81,6 +81,7 @@ const DICT={
   cancel:'enseraf',save:'zakhire',fill:'hameye field haye lazem ra por kon',saved:'zakhire shod ✓',
   cf_delsrv:'hazf server az panel?',cf_delnode:'hazf node',cf_delsvc:'hazf service',cf_deploy:'apdit az GitHub (akharin Release) rooye',
   copy_out:'copy khorooji',close:'bastan',copied:'copy shod ✓',loading_det:'dar hal daryaft jozyiat…',
+  logs_btn:'log',download:'download',collecting_logs:'jam-avari-ye log az',
   // form titles/labels
   t_kcp_iran:'roshan kardan KCP (samt Iran)',l_udp:'port UDP (443 = estetar QUIC)',l_profile:'profile',
   t_kcp_node:'roshan kardan KCP (samt node)',l_remote:'IP:PORT Iran (UDP)',l_key:'KEY (az "namayesh KEY node")',
@@ -230,6 +231,7 @@ const DICT={
   cancel:'Cancel',save:'Save',fill:'Fill all required fields',saved:'Saved ✓',
   cf_delsrv:'Remove server from panel?',cf_delnode:'Remove node',cf_delsvc:'Remove service',cf_deploy:'Update from GitHub (latest Release) on',
   copy_out:'Copy output',close:'Close',copied:'Copied ✓',loading_det:'Loading details…',
+  logs_btn:'Logs',download:'Download',collecting_logs:'Collecting logs from',
   t_kcp_iran:'Enable KCP (Iran side)',l_udp:'UDP port (443 = QUIC stealth)',l_profile:'Profile',
   t_kcp_node:'Enable KCP (node side)',l_remote:'IP:PORT Iran (UDP)',l_key:'KEY (from "Show node KEY")',
   t_kcp_up:'Enable KCP (upstream)',

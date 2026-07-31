@@ -29,14 +29,16 @@ SVC_FILE="/etc/rathole/services.conf"
 CLIENT_TOML="/etc/rathole/client.toml"
 SVC="rathole-client"
 
-c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
-c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
-c_y(){ printf '\033[1;33m%s\033[0m' "$*"; }
-log(){ printf '%s %s\n' "$(c_g '[+]')" "$*"; }
-warn(){ printf '%s %s\n' "$(c_y '[*]')" "$*"; }
-err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
-die(){ err "$*"; exit 1; }
-need_root(){ [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad."; }
+# TAVAJOH: c_g/c_r/c_y/log/warn/err/die/need_root/kcp_profile inja DOBARE tarif NEMISHAVAND —
+# tanha manba-eshan common.sh ast (bala source shod). ghablan har se file copy dashtand va chon
+# source ghabl az tarif bood، copy-e CLI barande mishod: virayesh-e common.sh BI-ASAR bood.
+# baraye kcp_profile in fajee ast — profile bayad DO taraf (Iran va node) yeksan bashad.
+# common.sh EJBARI ast (rth_commit_config / install_backhaul / backhaul_mux_profile faghat anja
+# hastand)، pas agar load nashode bashad hamin ja ba payam-e roshan mimirim.
+if ! declare -F rth_commit_config >/dev/null 2>&1; then
+  printf '[!] common.sh load nashod (/usr/local/share/rathole/common.sh). nasb ra tekrar kon.\n' >&2
+  exit 1
+fi
 
 load_env(){ [ -f "$ENV_FILE" ] || die "node.env peyda nshd; aval install-node.sh ra ejra kon."; set -a; . "$ENV_FILE"; set +a; }
 
@@ -259,6 +261,69 @@ cmd_show(){
 cmd_status(){ systemctl --no-pager status "$SVC" | sed -n '1,12p' || true; }
 cmd_logs(){ journalctl -u "$SVC" -n "${1:-50}" --no-pager || true; }
 
+# ---------- logs all: jam-avari-ye HAME chiz baraye eshkal-zodai ----------
+# estefade: ratholenode logs all [tedad-khat] [--bundle]
+# token-ha/kelid-ha ba rth_redact (common.sh) hazf mishavand — khorooji ghabel-e eshterak ast.
+_logs_all_body(){
+  local n="$1" u id
+  rth_sec "kolli"
+  printf 'tarikh      : %s\n' "$(date -Is 2>/dev/null)"
+  printf 'hostname    : %s\n' "$(hostname 2>/dev/null)"
+  printf 'naghsh      : node (kharej)\n'
+  printf 'kernel      : %s\n' "$(uname -sr 2>/dev/null)"
+  printf 'os          : %s\n' "$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
+  printf 'ratholenode : %s\n' "$(print_version node 2>/dev/null | head -1)"
+  printf 'rathole     : %s\n' "$(/usr/local/bin/rathole --version 2>/dev/null || echo 'nist')"
+  printf 'uptime      : %s\n' "$(uptime -p 2>/dev/null)"
+
+  rth_sec "tanzimat (show)"
+  cmd_show 2>&1 | rth_redact || true
+
+  # ---- service-ha: asli + backhaul/kcp/fakeweb/watchdog + hameye upstream-ha ----
+  for u in "$SVC" rathole-backhaul-client rathole-kcp-client rathole-fakeweb rathole-watchdog; do
+    rth_unit_log "$u" "$n"
+  done
+  # instans-haye multi-Iran (rathole-client@<id> + kcp-up-<id>)
+  for f in /etc/systemd/system/rathole-client@*.service /etc/systemd/system/rathole-kcp-up-*.service; do
+    [ -f "$f" ] || continue
+    u="$(basename "$f" .service)"
+    rth_sec "unit: $u  (halat: $(systemctl is-active "$u" 2>/dev/null || echo unknown))"
+    journalctl -u "$u" -n "$n" --no-pager 2>/dev/null | rth_redact || true
+  done
+
+  rth_sec "atsal-haye khorooji (ss -tnp state established)"
+  ss -tnp state established 2>/dev/null | head -n 40 | rth_redact || true
+  rth_sec "port-haye baz (ss -ltnp)"
+  ss -ltnp 2>/dev/null | rth_redact || true
+
+  rth_file_dump "node.env"             "$ENV_FILE"      120
+  rth_file_dump "services.conf"        "$SVC_FILE"      120
+  rth_file_dump "client.toml"          "$CLIENT_TOML"   300
+  rth_file_dump "backhaul-client.toml" "/etc/rathole/backhaul-client.toml" 120
+
+  rth_sec "payan"
+}
+
+cmd_logs_all(){
+  local n=80 bundle=0 a
+  for a in "$@"; do
+    case "$a" in
+      --bundle) bundle=1 ;;
+      ''|*[!0-9]*) : ;;
+      *) n="$a" ;;
+    esac
+  done
+  if [ "$bundle" -eq 1 ]; then
+    local out; out="/tmp/rathole-logs-$(hostname -s 2>/dev/null || echo node)-$(date +%Y%m%d-%H%M%S).txt.gz"
+    _logs_all_body "$n" 2>&1 | gzip -c > "$out" || die "sakht-e bundle shekast khord."
+    chmod 600 "$out"
+    log "bundle-e log sakhte shod: $out  ($(du -h "$out" 2>/dev/null | cut -f1))"
+    echo "  bardashtan az system-e khodet:  scp root@<ip-node>:$out ."
+  else
+    _logs_all_body "$n"
+  fi
+}
+
 # ---------- kcp/FEC tunnel samt node (switch masir tunnel az 443 be UDP+FEC) ----------
 KCP_CLI_BIN=/usr/local/bin/kcptun-client
 KCP_CLI_UNIT=/etc/systemd/system/rathole-kcp-client.service
@@ -309,15 +374,8 @@ WantedBy=multi-user.target
 UNIT
 }
 
-# profile FEC → "datashard parityshard mode sndwnd rcvwnd" (bayad ba server Iran iki bashad)
-kcp_profile(){
-  case "${1:-balanced}" in
-    balanced)   echo "10 3 fast2 2048 2048" ;;
-    lossy)      echo "10 5 fast2 2048 2048" ;;
-    aggressive) echo "10 4 fast3 4096 4096" ;;
-    *) return 1 ;;
-  esac
-}
+# profile FEC ("datashard parityshard mode sndwnd rcvwnd") dar common.sh:kcp_profile ast —
+# amdan inja copy NEMISHAVAD: parametr-haye FEC bayad ba server-e Iran daghighan yeksan bashand.
 
 cmd_kcp(){
   need_root
@@ -1263,6 +1321,8 @@ ratholenode — mdirit klaint rathole (chnd service rooye yek tunnel)
   watchdog <on [interval]|off|status>   restart khodkar tunnel gir-karde/ghat-shode
   backup [file] | restore <file>   backup/restore tanzimat node
   update [beta|stable]           beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release (azmayeshi)
+  logs [n]                       log-e rathole-client
+  logs all [n] [--bundle]        log-e HAME chiz (service-ha + config-ha) — token-ha redact mishavand; --bundle = file-e .txt.gz baraye scp
   show                           namayesh tanzimat (tokenha makhfi)
   version                        chap-e noskhe-ye manager + rathole
 U
@@ -1546,11 +1606,39 @@ main(){
     status)  cmd_status ;;
     update)  shift; cmd_update "${1:-}" ;;
     adaptive) shift; cmd_adaptive "$@" ;;
-    logs)    shift; cmd_logs "${1:-50}" ;;
+    logs)    shift
+             if [ "${1:-}" = all ]; then shift; cmd_logs_all "$@"; else cmd_logs "${1:-50}"; fi ;;
     version|--version|-V) print_version node ;;
     -h|--help|help) usage ;;
     *) err "dstvr nashenakhte: $1"; usage; exit 1 ;;
   esac
 }
 
-if [ "${RATHOLENODE_LIB_ONLY:-0}" != 1 ]; then main "$@"; fi
+# ---------- ghofl-e state (hamsan-e ratholectl) ----------
+# CHERA: hub mitavanad chand action ra HAMZAMAN rooye yek node ejra konad. mutator-haye
+# node (env_set / kv_set / services.conf / up_*.env) hameh alghoye khandan→neveshtan darand
+# va bedoon-e ghofl hamdigar ra bazneveshte mikonand (lost update). rooye Iran hamin bug
+# ba 4 'add'-e hamzaman 2 node ra gom kard va do port-e yeksan sakht.
+# fallback-e mkdir baraye sistem-haye bedoon-e flock (hamsan-e rth_commit_config).
+RTH_LOCK="/run/ratholenode.lock"
+rth_with_lock(){
+  mkdir -p "$(dirname "$RTH_LOCK")" 2>/dev/null || RTH_LOCK="/tmp/ratholenode.lock"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$RTH_LOCK" 2>/dev/null || { "$@"; return $?; }
+    flock -w 30 9 || warn "ghofl-e state azad nashod (30s); edame midaham."
+    "$@"; local rc=$?
+    exec 9>&-
+    return $rc
+  fi
+  local d="${RTH_LOCK}.d" i=0 held=0
+  while [ "$i" -lt 300 ]; do
+    if mkdir "$d" 2>/dev/null; then held=1; break; fi
+    i=$((i+1)); sleep 0.1 2>/dev/null || sleep 1
+  done
+  [ "$held" -eq 1 ] || warn "ghofl-e state azad nashod (timeout); edame midaham."
+  "$@"; local rc=$?
+  [ "$held" -eq 1 ] && rmdir "$d" 2>/dev/null
+  return $rc
+}
+
+if [ "${RATHOLENODE_LIB_ONLY:-0}" != 1 ]; then rth_with_lock main "$@"; fi
