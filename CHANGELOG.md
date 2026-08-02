@@ -9,6 +9,8 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-02
+
 ### Added
 - **core-e backhaul-e khodemAn ba asar-angosht-e TLS-e Chrome (uTLS):** backhaul-e upstream az
   `crypto/tls`-e Go estefade mikonad ke JA3/JA4-e mokhtas-e khodesh darad — DPI mitavanad
