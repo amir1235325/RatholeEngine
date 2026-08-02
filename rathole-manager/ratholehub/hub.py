@@ -1318,9 +1318,13 @@ class Handler(BaseHTTPRequestHandler):
         else:
             remote = info.get("domain")
             client_transport = info.get("transport", "wssmux")
+        # direct-IP ba wss/wssmux ham TLS darad (khod-e backhaul terminate mikonad، ba gvahi-ye
+        # self-signed-e ip-cert). pas 'tls' ra be mode sakht-kod nakon — be transport negah kon.
+        # 'verified' joda ast: dar direct-IP gvahi verify nemishavad (InsecureSkipVerify).
+        tls = mode == "nginx_tls" or client_transport in ("wss", "wssmux")
         return self._send(200, {"ok": True, "domain": info.get("domain", ""), "remote_addr": remote,
                                 "mode": mode, "token": info["token"], "transport": client_transport,
-                                "tls": mode == "nginx_tls", "encrypted": mode == "nginx_tls",
+                                "tls": tls, "encrypted": tls, "verified": mode == "nginx_tls",
                                 "profile": info.get("profile", "balanced")})
 
     def _nodeconnect(self, name, node):

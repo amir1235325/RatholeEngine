@@ -175,12 +175,17 @@ def build_iran_cmd(action, a):
         transport = a.get("transport", "wsmux") or "wsmux"
         profile   = a.get("profile", "balanced") or "balanced"
         mode      = a.get("mode", "nginx_tls") or "nginx_tls"
-        # transport-e server HATMAN bedoon-e TLS ast; exposure moshakhas mikonad nginx ya public bind.
+        # transport be mode vabaste ast: dar nginx_tls، nginx TLS ra terminate mikonad pas server
+        # HATMAN bedoon-e TLS ast (ws/wsmux). dar direct_ip nginx dar masir nist، pas khod-e
+        # backhaul mitavanad TLS ra terminate konad (wss/wssmux ba gvahi-ye ip-cert).
         if not RE_PORT.match(port):        return None
-        if not RE_BH_SRV.match(transport): return None
         if not RE_PROFILE.match(profile):  return None
         if not RE_BH_MODE.match(mode):     return None
-        if mode == "direct_ip" and port == "443": return None
+        if mode == "direct_ip":
+            if not RE_BH_ANY.match(transport): return None
+            if port == "443": return None
+        else:
+            if not RE_BH_SRV.match(transport): return None
         return ["ratholectl", "backhaul", "on", port, transport, profile, mode]
     if action in ("backhaul_node_on", "backhaul_node_off"):
         name = a.get("name", "")
@@ -334,9 +339,13 @@ def build_node_cmd(action, a):
         if not RE_BH_ANY.match(transport):   return None
         if not RE_PROFILE.match(profile):    return None
         if mode == "nginx_tls":
+            # client hamishe be nginx:443 mizanad → faghat variant-e TLS-dar، ba host/domain.
             if not RE_HOST.match(remote) or not RE_BH_CLI.match(transport): return None
         else:
-            if not RE_IPPORT.match(remote) or transport not in ("ws", "wsmux"): return None
+            # direct-IP: endpoint bayad host:port-e sarih bashad. har chahar transport mojaz ast —
+            # ws/wsmux bedoon-e ramz، wss/wssmux ba gvahi-ye self-signed-e samt-e Iran.
+            if not RE_IPPORT.match(remote): return None
+            if transport not in ("ws", "wsmux", "wss", "wssmux"): return None
         return ["ratholenode", "backhaul", "on", remote, token, transport, profile]
     if action == "migrate":     return ["ratholenode", "migrate"]
 

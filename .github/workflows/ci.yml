@@ -56,6 +56,10 @@ jobs:
         run: |
           bash tests/test_nginx_control_path.sh
 
+      - name: backhaul self-signed TLS (direct-IP) tests
+        run: |
+          bash tests/test_backhaul_tls.sh
+
       - name: adaptive probe + controller tests
         run: |
           bash tests/test_adaptive.sh

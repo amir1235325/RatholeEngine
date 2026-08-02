@@ -657,7 +657,15 @@ cmd_backhaul(){
       gen_backhaul_client_unit
       systemctl enable "$BH_CLI_SVC" >/dev/null 2>&1 || true
       systemctl restart "$BH_CLI_SVC" 2>/dev/null && log "$BH_CLI_SVC start shod (mux → ${remote}, transport=${transport}, profile=${profile})." || err "start nashod; log: journalctl -u $BH_CLI_SVC -n 30"
-      case "$transport" in ws|wsmux) warn "in masir TLS nadarad؛ baraye ramznegari/camouflage az wss/wssmux ya Noise estefade kon." ;; esac
+      case "$transport" in
+        ws|wsmux) warn "in masir TLS nadarad؛ baraye ramznegari/camouflage az wss/wssmux ya Noise estefade kon." ;;
+        wss|wssmux)
+          # be IP-e khali yaani gvahi-ye self-signed-e samt-e Iran. client-e backhaul gvahi ra
+          # verify NEMIKONAD (InsecureSkipVerify dar upstream) — in ra sarih begoo ta operator
+          # khial nakonad hefazat dar barabar-e MITM-e faal ham darad.
+          echo "$remote" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}:' && \
+            warn "TLS be IP-e khali: gvahi verify NEMISHAVAD — ramz dar barabar-e shenod-e ghayr-faal bargharar ast، vali MITM-e faal daf nemishavad." ;;
+      esac
       # backhaul JAYGOZIN-e kamel-e tunnel-e rathole baraye in node ast: samt-e Iran service az
       # server.toml hazf shode, pas rathole-client be service-i vasl mishavad ke digar nist va
       # crash-loop mikonad. khamoosh (va disable ta bad az reboot ham balaa nayayad).

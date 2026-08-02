@@ -182,16 +182,32 @@ class TestIpAndBackhaulModes(unittest.TestCase):
 
     def test_backhaul_direct_ip(self):
         tok = "a" * 40
-        self.assertEqual(build_node_cmd("backhaul_on", {"mode": "direct_ip", "remote_addr": "1.2.3.4:3080",
-                                                         "token": tok, "transport": "wsmux", "profile": "balanced"}),
-                         ["ratholenode", "backhaul", "on", "1.2.3.4:3080", tok, "wsmux", "balanced"])
-        self.assertIsNone(build_node_cmd("backhaul_on", {"mode": "direct_ip", "remote_addr": "1.2.3.4:3080",
-                                                          "token": tok, "transport": "wssmux", "profile": "balanced"}))
+        base = {"mode": "direct_ip", "remote_addr": "1.2.3.4:3080", "token": tok, "profile": "balanced"}
+        # direct-IP: har chahar transport mojaz — ws/wsmux bedoon-e ramz، wss/wssmux ba
+        # gvahi-ye self-signed-e samt-e Iran (client-e backhaul an ra verify nemikonad).
+        for tr in ("ws", "wsmux", "wss", "wssmux"):
+            self.assertEqual(build_node_cmd("backhaul_on", dict(base, transport=tr)),
+                             ["ratholenode", "backhaul", "on", "1.2.3.4:3080", tok, tr, "balanced"])
+        # endpoint-e direct HATMAN bayad host:port-e sarih bashad (domain-e bedoon port rad mishavad)
+        self.assertIsNone(build_node_cmd("backhaul_on", dict(base, remote_addr="d.example", transport="wssmux")))
+        # nginx_tls: client be nginx:443 mizanad → faghat variant-e TLS-dar
+        self.assertIsNone(build_node_cmd("backhaul_on", {"mode": "nginx_tls", "domain": "d.example",
+                                                          "token": tok, "transport": "wsmux", "profile": "balanced"}))
 
     def test_iran_backhaul_mode(self):
+        # direct-IP: server khodesh TLS ra terminate mikonad، pas wss/wssmux ham mojaz ast.
+        for tr in ("ws", "wsmux", "wss", "wssmux"):
+            self.assertEqual(hub.build_iran_cmd("backhaul_on", {"port": "3080", "transport": tr,
+                                                                 "profile": "balanced", "mode": "direct_ip"}),
+                             ["ratholectl", "backhaul", "on", "3080", tr, "balanced", "direct_ip"])
+        # nginx_tls: nginx TLS ra terminate mikonad → server HATMAN bedoon-e TLS
         self.assertEqual(hub.build_iran_cmd("backhaul_on", {"port": "3080", "transport": "wsmux",
-                                                             "profile": "balanced", "mode": "direct_ip"}),
-                         ["ratholectl", "backhaul", "on", "3080", "wsmux", "balanced", "direct_ip"])
+                                                             "profile": "balanced", "mode": "nginx_tls"}),
+                         ["ratholectl", "backhaul", "on", "3080", "wsmux", "balanced", "nginx_tls"])
+        for tr in ("wss", "wssmux"):
+            self.assertIsNone(hub.build_iran_cmd("backhaul_on", {"port": "3080", "transport": tr,
+                                                                  "profile": "balanced", "mode": "nginx_tls"}))
+        # direct-IP rooye 443 ba nginx tadakhol darad
         self.assertIsNone(hub.build_iran_cmd("backhaul_on", {"port": "443", "transport": "wsmux",
                                                               "profile": "balanced", "mode": "direct_ip"}))
 

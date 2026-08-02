@@ -9,6 +9,28 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+### Added
+- **backhaul-e direct-IP hala TLS-e self-signed darad:** `ratholectl backhaul on <port> wssmux <profile> direct_ip`
+  — khod-e backhaul TLS ra terminate mikonad (nginx dar masir nist) va `tls_cert`/`tls_key` az
+  haman gvahi-ye `ratholectl ip-cert <IPv4>` khande mishavad (yek anbar-e gvahi، na do ta).
+  ta hala direct-IP faghat `ws`/`wsmux`-e bedoon-e ramz bood va token roo-ye sim miraft.
+  **nokte-ye amniati:** client-e backhaul gvahi ra verify NEMIKONAD (`InsecureSkipVerify` dar
+  upstream) — pas ramz dar barabar-e shenod-e GHAYR-FAAL bargharar ast vali MITM-e FAAL daf
+  nemishavad. har do samt (CLI va hub) in ra sarih migooyand.
+  `ratholectl ip-cert-off` hala agar backhaul dar hal-e estefade az an gvahi bashad die mikonad.
+  test: `tests/test_backhaul_tls.sh`.
+
+### Fixed
+- **`tls`/`encrypted` dar `status --json` va `backhaul show`-e hub be `mode` sakht-kod shode
+  bood** (`mode=="nginx_tls"`) — pas direct-IP + `wssmux` be ghalat «bedoon-e ramz» gozaresh
+  mishod. hala be transport negah mikonad، va field-e jadid-e `verified` farq-e «ramz-shode»
+  ba «gvahi-ye tayid-shode» ra roshan mikonad.
+
+### Changed
+- **mojavez be AGPL-3.0-or-later taghir kard** (ghablan MIT). noskhe-haye ta v1.7.0 HAMCHENAN
+  tahte MIT dar dastres-and. `package.sh` hala `LICENSE` va `NOTICE` ra dar baste migozarad —
+  ta hala hich noskhe-ye tozi-shode-i matn-e mojavez ra hamrah nadasht. bebin: `NOTICE`.
+
 ## [1.7.0] - 2026-08-02
 
 do bakhsh: (a) nasb digar dar marhale-ye «tanzimat avlih» gir nemikonad، (b) tunnel mitavanad

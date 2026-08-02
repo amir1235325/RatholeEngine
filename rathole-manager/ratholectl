@@ -489,12 +489,27 @@ gen_backhaul_server_toml(){
   profile="$(jq -r '.backhaul_profile // "balanced"' "$STATE" 2>/dev/null)"
   # 'connection_pool' (field-e akhar) faghat samt-e client mani darad — inja dor rikhte mishavad.
   read -r muxcon muxver muxframe muxrecv muxstream _ <<<"$(backhaul_mux_profile "$profile")"
+  # wss/wssmux faghat dar halat-e direct_ip mani darad (nginx dar masir nist، pas KHOD-e backhaul
+  # TLS ra terminate mikonad). backhaul in do field ra baraye an transport-ha ELZAMI midanad.
+  local tls_fc="" tls_key=""
+  case "$transport" in
+    wss|wssmux)
+      tls_fc="$(jq -r '.ip_tls.fullchain // empty' "$STATE" 2>/dev/null)"
+      tls_key="$(jq -r '.ip_tls.key // empty' "$STATE" 2>/dev/null)"
+      { [ -n "$tls_fc" ] && [ -n "$tls_key" ] && [ -f "$tls_fc" ] && [ -f "$tls_key" ]; } || \
+        die "backhaul ba '${transport}' be gvahi-ye IP niaz darad vali peyda nashod؛ ejra kon: ratholectl ip-cert <IPv4>"
+      ;;
+  esac
   {
     echo "# tvlid khodkar tvst ratholectl — dasti virayesh nakon (core=backhaul, transport=${transport})"
     echo "[server]"
     echo "bind_addr = \"${bind}:${bport}\""
     echo "transport = \"${transport}\""
     echo "token = \"${token}\""
+    if [ -n "$tls_fc" ]; then
+      echo "tls_cert = \"${tls_fc}\""
+      echo "tls_key = \"${tls_key}\""
+    fi
     echo "heartbeat = 40"
     echo "channel_size = 2048"
     echo "mux_con = ${muxcon:-8}"
@@ -1527,7 +1542,10 @@ cmd_status(){
         features:{plain:{configured:($plain!=""),active:($plain!="" and $svc_nginx=="yes"),port:(if $plain=="" then null else ($plain|tonumber) end)},
                   direct:{configured:($direct!=""),active:($direct!="" and $svc_nginx=="yes"),port:(if $direct=="" then null else ($direct|tonumber) end)},
                   noise:{configured:($noise!=""),active:($svc_noise=="yes"),port:(if $noise=="" then null else ($noise|tonumber) end),encrypted:true},
-                  backhaul:{configured:($backhaul!=""),active:($svc_bh=="yes"),port:(if $backhaul=="" then null else ($backhaul|tonumber) end),mode:$bh_mode,transport:$bh_transport,tls:($bh_mode=="nginx_tls"),encrypted:($bh_mode=="nginx_tls")}},
+                  backhaul:{configured:($backhaul!=""),active:($svc_bh=="yes"),port:(if $backhaul=="" then null else ($backhaul|tonumber) end),mode:$bh_mode,transport:$bh_transport,
+                            tls:($bh_mode=="nginx_tls" or ($bh_transport|test("^wss"))),
+                            encrypted:($bh_mode=="nginx_tls" or ($bh_transport|test("^wss"))),
+                            verified:($bh_mode=="nginx_tls")}},
         sni_count:$sni_count, node_count:$node_count, nodes:$nodes}'
     return
   fi
@@ -1640,6 +1658,16 @@ cmd_ip_cert_show(){
 cmd_ip_cert_off(){
   need_root; need_bin jq; ensure_state
   jq -e '.ip_tls != null' "$STATE" >/dev/null 2>&1 || { warn "IP TLS az ghabl khamoosh ast."; return; }
+  # backhaul-e direct_ip ba wss/wssmux HAMIN gvahi ra be onvane tls_cert estefade mikonad —
+  # hazf-e an backhaul-server ra bi-seda az kar miandazad. jelo-ye tadakhol ra ghabl az taghir begir.
+  local _bx _btr
+  _bx="$(jq -r '.backhaul_exposure // empty' "$STATE" 2>/dev/null)"
+  _btr="$(jq -r '.backhaul_transport // empty' "$STATE" 2>/dev/null)"
+  if [ "$_bx" = "direct_ip" ]; then
+    case "$_btr" in
+      wss|wssmux) die "backhaul-e direct-IP ba '${_btr}' az hamin gvahi estefade mikonad. aval an ra be 'wsmux' bebar ya khamoosh kon: ratholectl backhaul on <port> wsmux <profile> direct_ip" ;;
+    esac
+  fi
   local tmp; tmp="$(rth_mktemp)" || die "sakht-e file-e movaghat nashod."
   jq 'del(.ip_tls)' "$STATE" > "$tmp" || die "hazf IP TLS az state shekast khord."
   [ -s "$tmp" ] || die "state khali shod; state dast-nakhorde mand."
@@ -2411,19 +2439,34 @@ cmd_backhaul(){
       local port="${1:-}"; port="${port:-3080}"
       echo "$port" | grep -qE '^[0-9]+$' || die "port bayad adad bashad."
       [ "$port" = "443" ] && die "port 443 rezerv ast; backhaul ru-ye 127.0.0.1 posht-e nginx gush midahad — port-e dakheli (masalan 3080) bede."
-      # faghat variant-e BEDOON-e TLS pazirofte mishavad: nginx TLS ra terminate karde va
-      # HTTP-e sade be 127.0.0.1 pass midahad. client-e node khodash wss/wssmux mizanad.
-      # (tcpmux TCP-e kham ast va az nginx-e L7 obor nemikonad.)
-      local transport="${2:-wsmux}"
-      case "$transport" in
-        ws|wsmux) ;;
-        wss|wssmux) die "transport-e server bayad bedoon-e TLS bashad — be jaye '${transport}' az '${transport/wss/ws}' estefade kon. TLS ru-ye nginx terminate mishavad va client-e node khodkar '${transport}' migirad." ;;
-        *) die "transport-e ghabl-e qobul: ws|wsmux (tcpmux az nginx obor nmikonad)." ;;
-      esac
-      local profile="${3:-balanced}" exposure="${4:-nginx_tls}"
+      local transport="${2:-wsmux}" profile="${3:-balanced}" exposure="${4:-nginx_tls}"
       backhaul_mux_profile "$profile" >/dev/null || die "profile namotabar (balanced|lossy|aggressive)."
       case "$exposure" in nginx_tls|direct_ip) ;; *) die "mode bayad nginx_tls ya direct_ip bashad." ;; esac
       [ "$exposure" = direct_ip ] && [ "$port" = 443 ] && die "direct-IP rooye 443 ba nginx tadakhol darad; port-e joda bede."
+      # transport be exposure vabaste ast:
+      #   nginx_tls → nginx TLS ra terminate mikonad va HTTP-e sade be 127.0.0.1 midahad، pas
+      #               server HATMAN bedoon-e TLS ast (ws/wsmux) va client-e node wss/wssmux mizanad.
+      #   direct_ip → hich nginx-i dar masir nist، pas KHOD-e backhaul bayad TLS ra terminate konad
+      #               (wss/wssmux ba gvahi-ye ip-cert). ws/wsmux ham mojaz ast vali BEDOON-e ramz.
+      # (tcpmux dar har do halat TCP-e kham ast va poshtibani nemishavad.)
+      case "${exposure}:${transport}" in
+        nginx_tls:ws|nginx_tls:wsmux|direct_ip:ws|direct_ip:wsmux|direct_ip:wss|direct_ip:wssmux) ;;
+        nginx_tls:wss|nginx_tls:wssmux)
+          die "dar halat-e nginx_tls transport-e server bayad bedoon-e TLS bashad — be jaye '${transport}' az '${transport/wss/ws}' estefade kon (TLS ru-ye nginx terminate mishavad va client-e node khodkar '${transport}' migirad)." ;;
+        *) die "transport-e ghabl-e qobul: nginx_tls → ws|wsmux ، direct_ip → ws|wsmux|wss|wssmux." ;;
+      esac
+      # direct_ip + TLS: gvahi-ye IP lazem ast. haman gvahi-ye `ratholectl ip-cert` estefade
+      # mishavad (yek anbar-e gvahi، na do ta). client-e backhaul gvahi ra verify NEMIKONAD
+      # (InsecureSkipVerify dar upstream)، pas self-signed bedoon-e trusted-root kar mikonad.
+      case "$transport" in
+        wss|wssmux)
+          local _fc _key
+          _fc="$(jq -r '.ip_tls.fullchain // empty' "$STATE" 2>/dev/null)"
+          _key="$(jq -r '.ip_tls.key // empty' "$STATE" 2>/dev/null)"
+          { [ -n "$_fc" ] && [ -n "$_key" ] && [ -f "$_fc" ] && [ -f "$_key" ]; } || \
+            die "baraye '${transport}' gvahi-ye IP lazem ast. aval ejra kon:  ratholectl ip-cert <IPv4>"
+          ;;
+      esac
       install_backhaul server
       # token-e moshterak: agar az ghabl dar state ast hefz, vagarna besaz (mesl control_path)
       local token; token="$(jq -r '.backhaul_token // empty' "$STATE" 2>/dev/null)"
@@ -2437,8 +2480,14 @@ cmd_backhaul(){
       gen_backhaul_server_toml
       systemctl enable "$BH_SVC" >/dev/null 2>&1 || true
       if [ "$exposure" = "direct_ip" ]; then
-        warn "backhaul direct-IP TLS nadarad; firewall/DPI ra khodet hesab kon. baraye camouflage, nginx_tls/443 ya Noise behtar ast."
-        log "backhaul core faal shod: backhaul-server ru-ye 0.0.0.0:${port} (transport=${transport}, profile=${profile}, direct-IP)."
+        case "$transport" in
+          wss|wssmux)
+            log "backhaul core faal shod: backhaul-server ru-ye 0.0.0.0:${port} (transport=${transport}, profile=${profile}, direct-IP + TLS-e self-signed)."
+            warn "gvahi self-signed ast va client-e backhaul an ra verify NEMIKONAD: ramz dar barabar-e shenod-e ghayr-faal bargharar ast، vali MITM-e faal daf nemishavad." ;;
+          *)
+            warn "backhaul direct-IP ba '${transport}' TLS NADARAD (token ham roo-ye sim mireh). baraye ramz: hamin dastoor ba 'wssmux'، ya nginx_tls/443، ya Noise."
+            log "backhaul core faal shod: backhaul-server ru-ye 0.0.0.0:${port} (transport=${transport}, profile=${profile}, direct-IP)." ;;
+        esac
       else
         log "backhaul core faal shod: backhaul-server ru-ye 127.0.0.1:${port} (transport=${transport}, profile=${profile}) — az nginx/443 obur miknd (/channel,/tunnel)."
       fi
@@ -2520,7 +2569,7 @@ cmd_backhaul(){
     logs)
       journalctl -u "$BH_SVC" -n "${1:-40}" --no-pager 2>/dev/null || true
       ;;
-    *) die "estefade: ratholectl backhaul <on [port] [transport] [profile]|off|node <name> on|off|status|show|logs>" ;;
+    *) die "estefade: ratholectl backhaul <on [port] [transport] [profile] [nginx_tls|direct_ip]|off|node <name> on|off|status|show|logs>" ;;
   esac
 }
 
@@ -2596,17 +2645,25 @@ print_backhaul_connect(){
   prof="$(jq -r '.backhaul_profile // "balanced"' "$STATE" 2>/dev/null)"
   echo
   echo "$(c_y '──────── faalsazi backhaul (SMUX core) rooye node kharej ────────')"
-  if [ "$exposure" = "direct_ip" ]; then
-    echo "rooye node in ra bezan (direct-IP, BEDOON TLS):"
-  else
+  if [ "$exposure" != "direct_ip" ]; then
     echo "rooye node in ra bezan (tunnel-e mux az haman domain/443 obur miknd):"
+  else
+    case "$tr" in
+      wss|wssmux) echo "rooye node in ra bezan (direct-IP + TLS-e self-signed rooye khod-e backhaul):" ;;
+      *)          echo "rooye node in ra bezan (direct-IP, BEDOON TLS):" ;;
+    esac
   fi
   echo "  ratholenode backhaul on ${target} ${token:-<TOKEN>} ${ctr} ${prof}"
   echo
   echo "khamoosh kardan:  ratholenode backhaul off"
   echo "$(c_y '──────────────────────────────────────────────────')"
   echo "nokte: token moshterak ast va secret — fght be node-haye backhaul bede. mode=${exposure}."
-  [ "$exposure" = direct_ip ] && echo "HOSHDAR: ws/wsmux direct-IP TLS nadarad؛ baraye camouflage nginx_tls/443 ya Noise pishnahad mishavad."
+  if [ "$exposure" = direct_ip ]; then
+    case "$tr" in
+      wss|wssmux) echo "nokte: gvahi self-signed ast va client an ra verify nemikonad — ramz dar barabar-e shenod-e ghayr-faal hast، MITM-e faal na." ;;
+      *)          echo "HOSHDAR: '${tr}' direct-IP TLS NADARAD؛ baraye ramz haman dastoor ba 'wssmux'، ya nginx_tls/443، ya Noise." ;;
+    esac
+  fi
   echo "nokte: profile ('${prof}') bayad DAR HAR DO taraf yeksan bashad vagarna parametrhaye SMUX nemikhanand."
 }
 
@@ -2894,7 +2951,9 @@ dstvrha:
   kcp <on [port] [profile]|off|status|show>   tunnel UDP+FEC ba estetar (port 443=QUIC; profile: balanced/lossy/aggressive)
   plain <on [port]|off|status|show>   tunnel-e websocket bedoon-e TLS (listener HTTP rooye port jda, masalan 8880)
   noise <on [port]|off|node <name> on|off|status|show>   tunnel-e ramznegari-shode (Noise) rooye instans-e dovom (bedoon TLS/cert, port omomi masalan 2334)
-  backhaul <on [port] [transport] [profile]|off|node <name> on|off|status|show>   core-e backhaul (SMUX) posht-e nginx/443 — tak-port hefz (transport-e server: ws|wsmux — bedoon TLS; client khodkar wss/wssmux migirad. profile: balanced/lossy/aggressive)
+  backhaul <on [port] [transport] [profile] [mode]|off|node <name> on|off|status|show>   core-e backhaul (SMUX). profile: balanced/lossy/aggressive (bayad DO taraf yeksan bashad)
+                               mode=nginx_tls (pishfarz): posht-e nginx/443، tak-port hefz — transport-e server ws|wsmux (bedoon TLS، client khodkar wss/wssmux migirad)
+                               mode=direct_ip: bedoon-e nginx roo-ye 0.0.0.0:<port> — ws|wsmux (bedoon ramz) ya wss|wssmux (TLS-e self-signed، aval: ratholectl ip-cert <IPv4>)
   proxy <add <name> <http(s)://host:port>|rm <name>|ls>   reverse-proxy-e gheyre-tunnel: /<name>/ rooye haman 443 be yek upstream-e delkhah (baraye tunnel/service-haye kastom)
   game add <name> <inbound> <sni>   service game (SNI rooye 443, TLS rooye node)
 
