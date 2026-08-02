@@ -9,6 +9,19 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-02
+
+### Fixed
+- **node-haye MOJOOD hargez core-e uTLS ra nemigereftand.** `install_backhaul` ba
+  `[ -x "$bin" ] && return 0` shorou mishod — GHABL az barresi-ye core-e patch-shode. yaani har
+  node-i ke az ghabl `/usr/local/bin/backhaul-client` dasht (=hameye node-haye mojood) baad az
+  update ham BI-SEDA rooye binary-e ghadimi-ye bedoon-e uTLS mimand va asar-angosht-e Go ra
+  hefz mikard. hala core AVVAL check mishavad، ba moghayese-ye sha256: agar haman core bashad
+  dast nemizanad (idempotent)، agar farq dashte bashad jaygozin mikonad.
+  baad az update baraye eemal: `ratholenode backhaul on ...` ra dobare bezan (binary-e dar hal-e
+  ejra ta restart-e service avaz nemishavad).
+  test: `tests/test_core_backhaul_patch.sh` (tartib + nasb + idempotent + berooz-resani).
+
 ## [1.8.0] - 2026-08-02
 
 ### Added

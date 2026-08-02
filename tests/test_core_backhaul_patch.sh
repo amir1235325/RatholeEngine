@@ -69,4 +69,45 @@ grep -qF 'rev-parse HEAD' "$ROOT/core-backhaul/build.sh" || { echo "not ok - bui
 grep -qF 'install_backhaul_core' "$ROOT/rathole-manager/common.sh" || { echo "not ok - install_backhaul_core nist" >&2; exit 1; }
 grep -qF 'sha256sum -c SHA256SUMS' "$ROOT/rathole-manager/common.sh" || { echo "not ok - core bedoon-e checksum nasb mishavad" >&2; exit 1; }
 
+# core bayad GHABL az `[ -x $bin ] && return 0` check shavad. vagarna node-i ke az ghabl
+# binary-e ghadimi darad (yaani HAMEYE node-haye mojood) hargez noskhe-ye uTLS ra nemigirad.
+core_line="$(grep -n 'install_backhaul_core "\$role"' "$ROOT/rathole-manager/common.sh" | tail -1 | cut -d: -f1)"
+early_line="$(awk '/^install_backhaul\(\)/{f=1} f && /\[ -x "\$bin" \] && return 0/{print NR; exit}' "$ROOT/rathole-manager/common.sh")"
+[ -n "$core_line" ] && [ -n "$early_line" ] || { echo "not ok - natoanestam tartib-e install_backhaul ra bekhanam" >&2; exit 1; }
+[ "$core_line" -lt "$early_line" ] || {
+  echo "not ok - '[ -x \$bin ] && return 0' GHABL az install_backhaul_core ast — node-haye mojood uTLS nemigirand" >&2; exit 1; }
+
+# ---- raftar-e vaghei: nasb، idempotent budan، va berooz-resani-ye binary-e ghadimi ----
+sandbox="$tmp/sb"; mkdir -p "$sandbox/core-backhaul/linux-amd64" "$sandbox/core-backhaul/linux-arm64" "$sandbox/bin"
+printf 'PATCHED-CORE\n' > "$sandbox/core-backhaul/linux-amd64/backhaul"
+printf 'PATCHED-CORE\n' > "$sandbox/core-backhaul/linux-arm64/backhaul"
+( cd "$sandbox/core-backhaul" && sha256sum linux-amd64/backhaul linux-arm64/backhaul > SHA256SUMS )
+
+run_core(){ # khoruji-ye install_backhaul_core ba masir-haye sandbox
+  bash -c '
+    set -uo pipefail
+    SRC="$1"
+    log(){ echo "LOG: $*"; }; err(){ echo "ERR: $*" >&2; }; warn(){ :; }
+    die(){ echo "$*" >&2; exit 1; }
+    eval "$(sed -n "/^install_backhaul_core(){/,/^}/p" "$SRC")"
+    install_backhaul_core client
+    echo "rc=$?"
+  ' _ "$ROOT/rathole-manager/common.sh" 2>&1
+}
+export RATHOLE_BIN_DIR="$sandbox/bin" RATHOLE_CORE_BACKHAUL_DIR="$sandbox/core-backhaul"
+out="$(run_core)"
+printf '%s' "$out" | grep -q 'rc=0' || { echo "not ok - core nasb nashod: $out" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'nasb/berooz shod' || { echo "not ok - nasb log nashod: $out" >&2; exit 1; }
+grep -q PATCHED-CORE "$sandbox/bin/backhaul-client" || { echo "not ok - binary-e core copy nashod" >&2; exit 1; }
+
+# bar-e dovom: hamin core ast → nabayad dobare nasb konad (idempotent)
+out2="$(run_core)"
+printf '%s' "$out2" | grep -q 'rc=0' || { echo "not ok - farakhani-ye dovom rc!=0: $out2" >&2; exit 1; }
+printf '%s' "$out2" | grep -q 'nasb/berooz shod' && { echo "not ok - idempotent nist (dobare nasb kard)" >&2; exit 1; }
+
+# binary-e GHADIMI bayad ba core-e jadid jaygozin shavad
+printf 'OLD-UNPATCHED\n' > "$sandbox/bin/backhaul-client"
+out3="$(run_core)"
+grep -q PATCHED-CORE "$sandbox/bin/backhaul-client" || { echo "not ok - binary-e ghadimi berooz nashod: $out3" >&2; exit 1; }
+
 echo 'ok - ghar-dad-e patch-e core-e backhaul bargharar ast'

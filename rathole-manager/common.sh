@@ -3,7 +3,7 @@
 
 # noskhe-ye rathole-manager (panel/node/hub). moqe-e release in adad ba tag hamahang mishavad.
 # package.sh/CI mitavanad in ra be tag-e vaghei stamp konad; agar dast taghir dadi، bedoon 'v' bezar.
-MANAGER_VERSION="1.8.0"
+MANAGER_VERSION="1.8.1"
 
 c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
 c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
@@ -172,9 +172,11 @@ backhaul_client_transport(){
 # ba halqe-ye mirror ta az dakhel Iran (filtr/thrim github) ham javab begirad — haman elgo-ye install-panel.
 # binary-e patch-shode-ye ma (uTLS ClientHello-ye Chrome) agar kenar-e script-ha bashad.
 # masir hamsan-e core-e rathole: <SHARE>/core-backhaul/<target>/backhaul + SHA256SUMS.
-# bargasht: 0 agar nasb shod. RATHOLE_NO_CORE_BACKHAUL=1 in masir ra rad mikonad.
+# idempotent: agar binary-e nasb-shode HAMIN core bashad، dast nemizanad (rc=0).
+# bargasht: 0 agar core-e dorost sar-e jash bashad. RATHOLE_NO_CORE_BACKHAUL=1 in masir ra rad mikonad.
 install_backhaul_core(){
-  local role="$1" bin="/usr/local/bin/backhaul-$2" d target
+  # RATHOLE_BIN_DIR faghat baraye test ast (masir-e vaghei /usr/local/bin).
+  local role="$1" bin="${RATHOLE_BIN_DIR:-/usr/local/bin}/backhaul-$1" d target want have
   [ "${RATHOLE_NO_CORE_BACKHAUL:-0}" = 1 ] && return 1
   case "$(uname -m)" in x86_64) target=linux-amd64 ;; aarch64) target=linux-arm64 ;; *) return 1 ;; esac
   for d in "${RATHOLE_CORE_BACKHAUL_DIR:-}" /usr/local/share/rathole/core-backhaul \
@@ -182,19 +184,23 @@ install_backhaul_core(){
     [ -n "$d" ] && [ -f "$d/$target/backhaul" ] && [ -f "$d/SHA256SUMS" ] || continue
     ( cd "$d" && sha256sum -c SHA256SUMS --ignore-missing --quiet ) 2>/dev/null || {
       err "checksum-e core-e backhaul motabar nist ($d) — rad shod."; continue; }
+    want="$(sha256sum "$d/$target/backhaul" 2>/dev/null | cut -d' ' -f1)"
+    have=""; [ -x "$bin" ] && have="$(sha256sum "$bin" 2>/dev/null | cut -d' ' -f1)"
+    [ -n "$want" ] && [ "$want" = "$have" ] && return 0   # az ghabl haman core ast
     install -m755 "$d/$target/backhaul" "$bin" || continue
-    log "backhaul-$2 az core-e patch-shode nasb shod (uTLS): $bin"
+    log "backhaul-$role az core-e patch-shode nasb/berooz shod (uTLS): $bin"
     return 0
   done
   return 1
 }
 
 install_backhaul(){
-  local role="$1" bin="/usr/local/bin/backhaul-$1" ver="${BACKHAUL_VER:-v0.6.5}" arch tmp ok=0 m
+  local role="$1" bin="${RATHOLE_BIN_DIR:-/usr/local/bin}/backhaul-$1" ver="${BACKHAUL_VER:-v0.6.5}" arch tmp ok=0 m
+  # MOHEM: core AVVAL check mishavad، na baad az `[ -x $bin ]`. vagarna har node-i ke az ghabl
+  # binary-e ghadimi darad (yaani HAMEYE node-haye mojood) HARGEZ noskhe-ye uTLS ra nemigirad —
+  # hatta baad az update — va bi-seda rooye asar-angosht-e Go mimanad.
+  install_backhaul_core "$role" && return 0
   [ -x "$bin" ] && return 0
-  # tarjih: core-e patch-shode-ye mahalli (ham asar-angosht-e behtar، ham BEDOON-e download az
-  # GitHub ke az dakhel-e Iran nogte-ye shekast ast). agar naboud، upstream download mishavad.
-  install_backhaul_core "$role" "$role" && return 0
   case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) die "memari poshtibani nemishavad." ;; esac
   command -v curl >/dev/null 2>&1 || die "curl lazem ast."
   warn "core-e patch-shode peyda nashod؛ backhaul-e upstream download mishavad (bedoon-e uTLS)."
