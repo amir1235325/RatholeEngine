@@ -43,10 +43,15 @@ log "bundle baraye deploy amade shod: $BUNDLE_DIR"
 # tvlid config fght agar naboodan (ta token/ramz mojood pak nshvd)
 if [ ! -f "$CONF_DIR/config.json" ]; then
   API_TOKEN="$(openssl rand -hex 24 2>/dev/null || head -c24 /dev/urandom | xxd -p | tr -d '\n')"
-  # ramz ra tty-safe bekhan (zir-e curl|bash ya ejra az ratholectl، stdin momken ast pipe bashad)
-  if [ -t 0 ]; then read -rsp "ramz mdirit panel ra vared kon: " PW; echo
-  elif [ -r /dev/tty ]; then read -rsp "ramz mdirit panel ra vared kon: " PW </dev/tty; echo
-  else PW=""; fi
+  # ramz ra tty-safe bekhan (zir-e curl|bash ya ejra az ratholectl، stdin momken ast pipe bashad).
+  # `[ -r /dev/tty ]` DOROGH migoyad (device hamishe readable ast hatta bedoon-e controlling
+  # terminal) — pas VAGHEAN bazesh mikonim. timeout ham lazem ast vagarna terminal-e
+  # bi-morajea nasb ra ta abad gir miandazad (haman bug-e hang-e nasb).
+  PW=""
+  if [ -t 0 ]; then read -rst "${RTH_READ_TIMEOUT:-300}" -p "ramz mdirit panel ra vared kon: " PW; echo
+  elif { : < /dev/tty; } 2>/dev/null; then
+    read -rst "${RTH_READ_TIMEOUT:-300}" -p "ramz mdirit panel ra vared kon: " PW </dev/tty; echo
+  fi
   [ -n "$PW" ] || die "ramz khali nemishavad (bedoon tty؟ dasti ejra kon: sudo bash install-hub.sh)."
   PWHASH="$(printf '%s' "$PW" | sha256sum | cut -d' ' -f1)"
   cat > "$CONF_DIR/config.json" <<EOF

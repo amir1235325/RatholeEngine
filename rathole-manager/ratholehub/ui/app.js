@@ -276,6 +276,19 @@ async function delSrvPage(n){if(!confirm(t('cf_delsrv')+' ('+n+')'))return;await
 function tbl(cols){return '<table><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr>';}
 function esc(s){return h(s);}
 
+function featureOn(ov,key){
+ const f=((ov||{}).status||{}).features||{};
+ if(f[key]&&typeof f[key].active==='boolean')return f[key].active;
+ return !!(((ov||{})[key]||{}).enabled);
+}
+function toggleAction(on,onHtml,offHtml){return on?offHtml:onHtml;}
+function connSummary(ov,role){
+ const st=(ov||{}).status||{},m=role==='node'?(st.main||{}):{};
+ if(role==='node'&&!m.transport)return '';
+ if(role==='node')return `<div class="sub" style="margin-top:7px">${h(t('conn_transport'))}: <b>${h(m.transport)}</b> · ${h(t('conn_dial'))}: <span class="mono">${h(m.dial_endpoint||'?')}</span> · ${h(t('conn_sni'))}: <span class="mono">${h(m.tls_hostname||'-')}</span> · ${h(t('conn_crypto'))}: ${m.encrypted?t('yes'):t('no')} · ${h(t('conn_live'))}: ${h(m.live||'unknown')}</div>`;
+ const bh=(((st||{}).features)||{}).backhaul||{};
+ return bh.configured?`<div class="sub" style="margin-top:7px">${h(t('conn_transport'))}: Backhaul/${h(bh.mode||'nginx_tls')} · ${h(t('conn_crypto'))}: ${bh.encrypted?t('yes'):t('no')} · ${h(t('conn_live'))}: ${h(bh.active?'active':'inactive')}</div>`:'';
+}
 function renderIran(n,ov){
  // baraye dokme-ye «afzoodan be node»: overview-e node-haye kharej ra pishaz-dast biar
  // ta list-e maghsad (node/upstream) khali nabashad.
@@ -291,28 +304,22 @@ function renderIran(n,ov){
  s+=`<div class="sec"><h4>${t('carriers_avail')}</h4>
    <div class="sub" style="margin-bottom:6px">${h(t('carriers_avail_hint'))}</div>
    <div class="btns"><span class="sub">${t('kcp_backbone')}</span>
-   <button class="g" onclick="kcpOnIran('${n}')">${t('kcp_on')}</button>
-   <button class="r" onclick="run('${n}','kcp_off')">${t('kcp_off')}</button>
+   ${toggleAction(featureOn(ov,'kcp'),`<button class="g" onclick="kcpOnIran('${n}')">${t('kcp_on')}</button>`,`<button class="r" onclick="run('${n}','kcp_off')">${t('kcp_off')}</button>`)}
    <button class="gh" onclick="run('${n}','kcp_show')">${t('show_key')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('plain_mode')}</span>
-   <button class="g" onclick="plainOnIran('${n}')">${t('plain_on')}</button>
-   <button class="r" onclick="run('${n}','plain_off')">${t('plain_off')}</button>
+   ${toggleAction(featureOn(ov,'plain'),`<button class="g" onclick="plainOnIran('${n}')">${t('plain_on')}</button>`,`<button class="r" onclick="run('${n}','plain_off')">${t('plain_off')}</button>`)}
    <button class="gh" onclick="run('${n}','plain_show')">${t('show_key')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('noise_mode')}</span>
-   <button class="g" onclick="noiseOnIran('${n}')">${t('noise_on')}</button>
-   <button class="r" onclick="run('${n}','noise_off')">${t('noise_off')}</button>
+   ${toggleAction(featureOn(ov,'noise'),`<button class="g" onclick="noiseOnIran('${n}')">${t('noise_on')}</button>`,`<button class="r" onclick="run('${n}','noise_off')">${t('noise_off')}</button>`)}
    <button class="gh" onclick="run('${n}','noise_show')">${t('show_key')}</button>
-   <button class="s" onclick="noiseNode('${n}','on')">${t('noise_node_on')}</button>
-   <button class="s" onclick="noiseNode('${n}','off')">${t('noise_node_off')}</button></div>
+   <button class="s" onclick="noiseNode('${n}','on')">${t('noise_node_on')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('bh_mode')}</span>
-   <button class="g" onclick="bhOnIran('${n}')">${t('bh_on')}</button>
-   <button class="r" onclick="run('${n}','backhaul_off')">${t('bh_off')}</button>
+   ${toggleAction(featureOn(ov,'backhaul'),`<button class="g" onclick="bhOnIran('${n}')">${t('bh_on')}</button>`,`<button class="r" onclick="run('${n}','backhaul_off')">${t('bh_off')}</button>`)}
    <button class="gh" onclick="run('${n}','backhaul_show')">${t('show_key')}</button>
    <button class="gh" onclick="run('${n}','backhaul_status')">${t('status')}</button>
    <button class="gh" onclick="run('${n}','backhaul_logs')">${t('logs')}</button>
-   <button class="s" onclick="bhNode('${n}','on')">${t('bh_node_on')}</button>
-   <button class="s" onclick="bhNode('${n}','off')">${t('bh_node_off')}</button></div>
-   ${bhUsageLine(ov)}
+   <button class="s" onclick="bhNode('${n}','on')">${t('bh_node_on')}</button></div>
+   ${bhUsageLine(ov)}${connSummary(ov,'iran')}
    <div class="btns" style="margin-top:10px">
    <button class="g" onclick="if(confirm(t('cf_reapply')))run('${n}','regen_full')">${t('reapply')}</button>
    <button class="s" onclick="if(confirm(t('cf_restart')))run('${n}','restart')">${t('restart_rathole')}</button></div>
@@ -321,8 +328,7 @@ function renderIran(n,ov){
  s+=`<div class="sec"><h4>${t('ingress_sec')}</h4>
    <div class="sub" style="margin-bottom:6px">${h(t('ingress_hint'))}</div>
    <div class="btns"><span class="sub">${t('direct_mode')}</span>
-   <button class="g" onclick="directOnIran('${n}')">${t('direct_on')}</button>
-   <button class="r" onclick="run('${n}','direct_off')">${t('direct_off')}</button>
+   ${toggleAction(featureOn(ov,'direct'),`<button class="g" onclick="directOnIran('${n}')">${t('direct_on')}</button>`,`<button class="r" onclick="run('${n}','direct_off')">${t('direct_off')}</button>`)}
    <button class="gh" onclick="run('${n}','direct_show')">${t('show_key')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('px_sec')}</span>
    <button class="g" onclick="pxAdd('${n}')">${t('px_add')}</button>
@@ -435,14 +441,12 @@ function renderNode(n,ov){
    <button class="gh" onclick="run('${n}','backhaul_status')">backhaul ${t('status')}</button>
    <button class="gh" onclick="run('${n}','backhaul_logs')">${t('bh_logs')}</button>
    <button class="gh" onclick="run('${n}','migrate')">${t('migrate')}</button></div>
-   <div class="sub" style="margin-top:4px">${h(t('carrier_hint'))}</div>
+   <div class="sub" style="margin-top:4px">${h(t('carrier_hint'))}</div>${connSummary(ov,'node')}
    <div class="btns" style="margin-top:6px"><span class="sub">${t('watchdog')}</span>
-   <button class="g" onclick="wdOn('${n}')">${t('wd_on')}</button>
-   <button class="r" onclick="run('${n}','watchdog_off')">${t('wd_off')}</button>
+   ${toggleAction(!!(((ov.status||{}).watchdog||{}).enabled),`<button class="g" onclick="wdOn('${n}')">${t('wd_on')}</button>`,`<button class="r" onclick="run('${n}','watchdog_off')">${t('wd_off')}</button>`)}
    <button class="gh" onclick="run('${n}','watchdog_status')">${t('wd_status')}</button></div>
    <div class="btns" style="margin-top:6px"><span class="sub">${t('adaptive_mode')}</span>
-   <button class="g" onclick="adaptiveOnNode('${n}')">${t('adaptive_on')}</button>
-   <button class="r" onclick="run('${n}','adaptive_off')">${t('adaptive_off')}</button>
+   ${toggleAction(!!(((ov.status||{}).adaptive||{}).enabled),`<button class="g" onclick="adaptiveOnNode('${n}')">${t('adaptive_on')}</button>`,`<button class="r" onclick="run('${n}','adaptive_off')">${t('adaptive_off')}</button>`)}
    <button class="gh" onclick="run('${n}','adaptive_status')">${t('adaptive_status')}</button>
    <button class="gh" onclick="run('${n}','adaptive_test')">${t('adaptive_test')}</button></div></div>`;
  s+=`<div class="sec"><h4>${t('svc_tunnel')} <button class="g" onclick="addSvc('${n}')">${t('add_svc')}</button></h4>`;
@@ -841,7 +845,7 @@ async function run(n,a,args){toast(t('running')+' '+a+' '+t('on')+' '+n+' …');
  if(bad){outModal(a+' ✗',full);}                                    // shekast: hamishe modal, ta gom nashavad
  else if(body&&(body.length>140||body.indexOf(String.fromCharCode(10))>=0)){outModal(a+' ✓',full);}
  else{toast(verdict+(body?(' — '+body):''));}
- loadOv(n);}
+ if(!bad)await loadOv(n);}
 async function doDeploy(n){if(!confirm(t('cf_deploy')+' '+n+' ?'))return; run(n,'deploy');}
 // ---------- jam-avari-ye log: khorooji-ye tolani → modal + dokme-ye download ----------
 // az run() joda ast chon (1) momken ast dah-ha kilobyte bashad va nabayad be toast beravad،
@@ -1216,11 +1220,13 @@ function noiseOnNode(n){formModal(t('t_noise_node'),noiseNodeFields(),
 // samt-e node transport-e TLS-dar — in do amdan yeki nistand.
 const BH_SRV_TR=[{v:'wsmux',t:'wsmux (mux)'},{v:'ws',t:'ws (bedoon mux)'}];
 const BH_CLI_TR=[{v:'wssmux',t:'wssmux (mux)'},{v:'wss',t:'wss (bedoon mux)'}];
+const BH_DIRECT_TR=[{v:'wsmux',t:'wsmux (direct, no TLS)'},{v:'ws',t:'ws (direct, no TLS)'}];
 function bhOnIran(n){formModal(t('t_bh_iran'),[
+  {id:'mode',label:t('l_bh_mode'),type:'select',val:'nginx_tls',opts:[{v:'nginx_tls',t:'nginx TLS/443 (recommended)'},{v:'direct_ip',t:'direct IP (no TLS)'}]},
   {id:'port',label:t('l_bh_port'),val:'3080',req:1},
   {id:'transport',label:t('l_bh_tr_srv'),type:'select',val:'wsmux',opts:BH_SRV_TR},
   {id:'profile',label:t('l_bh_prof'),type:'select',val:'balanced',opts:PROF}],
-  v=>{closeModal();run(n,'backhaul_on',{port:v.port,transport:v.transport||'wsmux',profile:v.profile||'balanced'});});}
+  v=>{if(v.mode==='direct_ip'&&!confirm(t('bh_direct_warn')))return;closeModal();run(n,'backhaul_on',{port:v.port,transport:v.transport||'wsmux',profile:v.profile||'balanced',mode:v.mode||'nginx_tls'});});}
 function bhNode(n,act){formModal(t(act==='on'?'bh_node_on':'bh_node_off'),[
   {id:'name',label:t('c_name'),req:1}],
   v=>{closeModal();run(n,act==='on'?'backhaul_node_on':'backhaul_node_off',{name:v.name});});}
@@ -1230,9 +1236,9 @@ async function bhAutofill(iranName){
  toast(t('autofilling'));
  const {j}=await api('GET','api/servers/'+iranName+'/backhaulconnect');
  if(!j||!j.ok){toast(t('autofail'));return;}
- if($('f_domain'))$('f_domain').value=j.domain||'';
+ if($('f_domain'))$('f_domain').value=j.remote_addr||j.domain||'';
  if($('f_token'))$('f_token').value=j.token||'';
- if($('f_transport')&&j.transport)$('f_transport').value=j.transport;
+ if($('f_transport')&&j.transport){if(![...$('f_transport').options].some(o=>o.value===j.transport))$('f_transport').add(new Option(j.transport,j.transport));$('f_transport').value=j.transport;}
  if($('f_profile')&&j.profile)$('f_profile').value=j.profile;
  toast(t('autofilled'));
 }
@@ -1241,7 +1247,7 @@ function bhNodeFields(){
  const f=[];
  if(irs.length){f.push({id:'iran',label:t('l_autofill'),type:'select',val:irs[0].name,
    opts:irs.map(s=>({v:s.name,t:s.name+' ('+s.host+')'}))});}
- f.push({id:'domain',label:t('l_bh_domain'),ph:'example.com',req:1});
+ f.push({id:'domain',label:t('l_bh_domain'),ph:'example.com or 1.2.3.4:3080',req:1});
  f.push({id:'token',label:t('l_bh_token'),req:1});
  f.push({id:'transport',label:t('l_bh_tr_cli'),type:'select',val:'wssmux',opts:BH_CLI_TR});
  f.push({id:'profile',label:t('l_bh_prof'),type:'select',val:'balanced',opts:PROF});
@@ -1382,7 +1388,7 @@ function setIranNodeCarrier(iran,name,next,cur){
 }
 
 function bhOnNode(n){formModal(t('t_bh_node'),bhNodeFields(),
-  v=>{closeModal();run(n,'backhaul_on',{domain:v.domain,token:v.token,transport:v.transport||'wssmux',profile:v.profile||'balanced'});});
+  v=>{const direct=/^[A-Za-z0-9_.-]+:[0-9]{1,5}$/.test(v.domain);closeModal();run(n,'backhaul_on',{mode:direct?'direct_ip':'nginx_tls',remote_addr:v.domain,token:v.token,transport:v.transport||(direct?'wsmux':'wssmux'),profile:v.profile||'balanced'});});
  const sel=$('f_iran');
  if(sel){sel.onchange=()=>bhAutofill(sel.value);
    const box=sel.closest('.row');
@@ -1399,11 +1405,20 @@ function iranSrvOptions(){return iranServers().map(s=>`<option value="${h(s.host
 // mohem: dar halat-e pishfarz (ws+TLS) node bayad be DOMAIN-e omoomi vasl shavad, na host/IP-e
 // SSH-e inventory — chon ratholenode az SERVER ham remote_addr va ham SNI ra misazad. pas
 // entekhab az roo-ye NAM-e server Iran ast va maghsad-e daghigh (domain) ra az server migirim.
+async function prepareIpTls(iran,node){
+ toast(t('autofilling'));
+ const {j}=await api('POST','api/ip-tls/prepare',{iran:iran,node:node});
+ if(!j||!j.ok){outModal(t('main_ip_self'),((j&&j.err)||JSON.stringify(j||{})));return null;}
+ return j;
+}
 function setMainSrv(n){
  const irs=iranServers();
  if(!irs.length){toast(t('no_iran'));return;}
  const f=[{id:'iran',label:t('l_iran_srv'),type:'select',val:irs[0].name,
-   opts:irs.map(s=>({v:s.name,t:s.name+' ('+s.host+')'}))}];
+   opts:irs.map(s=>({v:s.name,t:s.name+' ('+s.host+')'}))},
+   {id:'dial_mode',label:t('conn_dial'),type:'select',val:'domain',opts:[
+    {v:'domain',t:t('main_domain_tls')},{v:'ip',t:t('main_ip_sni')},{v:'ip_self',t:t('main_ip_self')}
+   ]}];
  formModal(t('set_main'),f,async v=>{
   const iran=(v.iran||'').trim(); if(!iran){toast(t('fill'));return;}
   closeModal();
@@ -1411,7 +1426,15 @@ function setMainSrv(n){
   // domain-e vaghei (ba cert-e mokhtabetesh) ra az server Iran begir, na host-e inventory
   const {j}=await api('GET','api/servers/'+iran+'/mainconnect');
   if(!j||!j.ok||!j.server){toast(t('autofail'));return;}
-  run(n,'set_server',{server:j.server});
+  if(v.dial_mode==='ip_self'){
+   if(!confirm(t('main_ip_self_confirm')))return;
+   const r=await prepareIpTls(iran,n);
+   if(!r)return;
+   await run(n,'set_main',{server:r.server,tls_hostname:r.tls_hostname,tls_trusted_root:r.tls_trusted_root});
+   return;
+  }
+  const server=v.dial_mode==='ip'?(j.dial_ip||j.server):j.server;
+  run(n,'set_main',{server:server,tls_hostname:j.tls_hostname||j.domain||''});
  });
 }
 // sim-keshi: yek node-e Iran (name/token/inbound) ra rooye yek node-e kharej (ya upstream-esh)

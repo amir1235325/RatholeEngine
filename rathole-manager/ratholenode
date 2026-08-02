@@ -17,12 +17,10 @@ elif [ -f "$SCRIPT_DIR/common.sh" ]; then
   source "$SCRIPT_DIR/common.sh"
 fi
 
-# pak-sazi temp files dar khrvj; har masir yek ansre arraye ta msire darai faasele ham dorost pak shavad.
-_RTH_TMP=()
-_rth_cleanup(){ [ "${#_RTH_TMP[@]}" -gt 0 ] && rm -rf -- "${_RTH_TMP[@]}"; }
-trap _rth_cleanup EXIT INT TERM
-rth_mktemp(){ local p; p="$(mktemp "$@")" || return 1; _RTH_TMP+=("$p"); echo "$p"; }
-rth_mktempd(){ local d; d="$(mktemp -d "$@")" || return 1; _RTH_TMP+=("$d"); echo "$d"; }
+# Temp-ha az command substitution bargasht dade mishavand; har caller baad az commit/masraf
+# khodesh pak mikonad. trap-e subshell-e ghadimi file ra pish az masraf-e caller hazf mikard.
+rth_mktemp(){ mktemp "$@"; }
+rth_mktempd(){ mktemp -d "$@"; }
 
 ENV_FILE="/etc/rathole/node.env"
 SVC_FILE="/etc/rathole/services.conf"
@@ -77,7 +75,11 @@ check_port_conflict(){
 gen_client(){
   load_env
   [ -f "$SVC_FILE" ] || die "hich srvisi tarif nashode ($SVC_FILE). ba 'ratholenode add-svc' ezafe kon."
-  local host="${SERVER%%:*}"
+  # SERVER endpoint-e dial ast; TLS_HOSTNAME (ekhtiari) SNI/cert hostname ra joda negah midarad.
+  # config-haye ghadimi SERVER-only sazgar mimanand; baraye IP+self-signed, TLS_TRUSTED_ROOT
+  # faghat public cert/CA ast (hich kelid-e khosusi rooye node nemiayad).
+  local host="${TLS_HOSTNAME:-${SERVER%%:*}}"
+  local trust="${TLS_TRUSTED_ROOT:-}"
   local mode="${TUNNEL:-ws}" remote tls hostline emitted_services=0
   if [ "$mode" = "kcp" ]; then
     # masir az trigh kcptun lvkal mirvd; TLS lazem nist (kcp khodesh ramz/FEC darad)
@@ -118,6 +120,10 @@ gen_client(){
       if [ "$tls" = "true" ]; then
         echo "[client.transport.tls]"
         echo "$hostline"
+        if [ -n "$trust" ]; then
+          [ -f "$trust" ] || die "TLS trusted root peyda nashod: $trust"
+          echo "trusted_root = \"${trust}\""
+        fi
       fi
     fi
     while IFS='|' read -r name token inbound; do
@@ -231,13 +237,15 @@ cmd_ls(){
 cmd_set(){
   need_root
   local key="${1:-}" val="${2:-}"
-  [ -n "$key" ] && [ -n "$val" ] || die "estefade: ratholenode set <SERVER|RATHOLE_VERSION> <value>"
-  case "$key" in SERVER|RATHOLE_VERSION) ;; *) die "kelid nashenakhte: $key (baraye serviceha az add-svc/rm-svc estefade kon)";; esac
+  [ -n "$key" ] && [ -n "$val" ] || die "estefade: ratholenode set <SERVER|TLS_HOSTNAME|TLS_TRUSTED_ROOT|RATHOLE_VERSION> <value>"
+  case "$key" in SERVER|TLS_HOSTNAME|TLS_TRUSTED_ROOT|RATHOLE_VERSION) ;; *) die "kelid nashenakhte: $key (baraye serviceha az add-svc/rm-svc estefade kon)";; esac
   # val ra etebar-sanji kon: hich metachar-e sed (# & \ / newline) nabayad dashte bashad,
   # vagarna sed-e paiin ('s#...#...#') mishkanad ya jایgozini-ye eshtebah mikonad.
   case "$key" in
     SERVER)          echo "$val" | grep -qE '^[A-Za-z0-9_.-]+(:[0-9]{1,5})?$' || die "SERVER namotabar (host ya host:port)." ;;
-    RATHOLE_VERSION) echo "$val" | grep -qE '^[A-Za-z0-9_.-]+$' || die "RATHOLE_VERSION namotabar." ;;
+    TLS_HOSTNAME)     echo "$val" | grep -qE '^[A-Za-z0-9_.-]+$' || die "TLS_HOSTNAME namotabar (domain/IP)." ;;
+    TLS_TRUSTED_ROOT) echo "$val" | grep -qE '^/[A-Za-z0-9_./-]{1,255}$' || die "TLS_TRUSTED_ROOT bayad masir-e motlagh-e amn bashad." ;;
+    RATHOLE_VERSION)  echo "$val" | grep -qE '^[A-Za-z0-9_.-]+$' || die "RATHOLE_VERSION namotabar." ;;
   esac
   # node.env agar hanoz nist (node-e taze az hub provision-shode, ghabl az install-node/curl)
   # ra bساز — 'set SERVER' khodesh bootstrap-e tunnel-e asli ast, pas nabayad ba «node.env
@@ -253,12 +261,61 @@ cmd_set(){
   fi
 }
 
+cmd_set_main(){
+  need_root
+  local server="${1:-}" hostname="${2:-}" trust="${3:-}"
+  [ -n "$server" ] || die "estefade: ratholenode set-main <host:port> [tls_hostname] [trusted_root]"
+  echo "$server" | grep -qE '^[A-Za-z0-9_.-]+(:[0-9]{1,5})?$' || die "SERVER namotabar (host ya host:port)."
+  [ -z "$hostname" ] || echo "$hostname" | grep -qE '^[A-Za-z0-9_.-]+$' || die "TLS hostname namotabar."
+  if [ -n "$trust" ]; then
+    echo "$trust" | grep -qE '^/[A-Za-z0-9_./-]{1,255}$' || die "trusted_root bayad masir-e motlagh-e amn bashad."
+    [ -n "$hostname" ] || die "trusted_root bedoon tls_hostname mojaz nist."
+    [ -f "$trust" ] || die "trusted_root peyda nashod: $trust"
+  fi
+  env_set SERVER "$server"
+  if [ -n "$hostname" ]; then env_set TLS_HOSTNAME "$hostname"; else sed -i '/^TLS_HOSTNAME=/d' "$ENV_FILE" 2>/dev/null || true; fi
+  if [ -n "$trust" ]; then env_set TLS_TRUSTED_ROOT "$trust"; else sed -i '/^TLS_TRUSTED_ROOT=/d' "$ENV_FILE" 2>/dev/null || true; fi
+  log "tunnel asli set shod: dial=$server${hostname:+ tls_hostname=$hostname}${trust:+ trusted_root=$trust}"
+  if [ -f "$SVC_FILE" ] && grep -qvE '^\s*(#|$)' "$SVC_FILE" 2>/dev/null; then cmd_apply; else warn "hanoz service-i nist; tanzimat zakhire shod."; fi
+}
+
 cmd_show(){
   load_env
   echo "$(c_g '== node.env ==')"; cat "$ENV_FILE"
   echo; echo "$(c_g '== services ==')"; cmd_ls
 }
-cmd_status(){ systemctl --no-pager status "$SVC" | sed -n '1,12p' || true; }
+_unit_active(){ systemctl is-active --quiet "$1" 2>/dev/null && echo yes || echo no; }
+_unit_enabled(){ systemctl is-enabled --quiet "$1" 2>/dev/null && echo yes || echo no; }
+cmd_status(){
+  local as_json=0; [ "${1:-}" = "--json" ] && as_json=1
+  load_env
+  local mode="${TUNNEL:-ws}" remote="${SERVER:-}" tls_host="${TLS_HOSTNAME:-${SERVER%%:*}}"
+  local tls=yes encrypted=yes unit="$SVC" bh_remote="${BH_REMOTE_ADDR:-}" trusted_root="${TLS_TRUSTED_ROOT:-}"
+  case "$mode" in
+    plain) remote="${PLAIN_REMOTE:-$remote}"; tls=no; encrypted=no ;;
+    noise) remote="${NOISE_REMOTE:-$remote}"; tls=no; encrypted=yes ;;
+    kcp) remote="${KCP_REMOTE:-$remote}"; tls=no; encrypted=yes ;;
+    backhaul)
+      unit="$BH_CLI_SVC"
+      remote="${BH_REMOTE_ADDR:-${BH_REMOTE:+${BH_REMOTE}:443}}"
+      case "${BH_TRANSPORT:-wssmux}" in ws|wsmux) tls=no; encrypted=no ;; *) tls=yes; encrypted=yes ;; esac
+      ;;
+  esac
+  local wd_enabled adaptive_enabled adaptive_class
+  wd_enabled="$(_unit_enabled rathole-watchdog.timer)"
+  adaptive_load_env; adaptive_enabled="${ADAPTIVE_ENABLED:-0}"
+  adaptive_class="$(python3 -c "import json; print(json.load(open('$ADAPTIVE_STATE')).get('classification','unknown'))" 2>/dev/null || echo unknown)"
+  if [ "$as_json" -eq 1 ]; then
+    command -v python3 >/dev/null 2>&1 || { printf '{"error":"python3 missing"}\n'; return; }
+    NODE_MODE="$mode" NODE_REMOTE="$remote" NODE_TLS_HOST="$tls_host" NODE_TRUSTED_ROOT="$trusted_root" NODE_TLS="$tls" NODE_ENCRYPTED="$encrypted" \
+    NODE_UNIT="$unit" NODE_ACTIVE="$(_unit_active "$unit")" NODE_ENABLED="$(_unit_enabled "$unit")" \
+    NODE_WD="$wd_enabled" NODE_ADAPTIVE="$adaptive_enabled" NODE_ADAPTIVE_CLASS="$adaptive_class" \
+    python3 -c 'import json,os; b=lambda n:os.environ.get(n)=="yes"; print(json.dumps({"main":{"transport":os.environ["NODE_MODE"],"dial_endpoint":os.environ["NODE_REMOTE"],"tls_hostname":os.environ["NODE_TLS_HOST"],"tls_trusted_root":os.environ["NODE_TRUSTED_ROOT"],"tls":b("NODE_TLS"),"encrypted":b("NODE_ENCRYPTED"),"service":{"name":os.environ["NODE_UNIT"],"enabled":b("NODE_ENABLED"),"active":b("NODE_ACTIVE")},"live":"unknown"},"watchdog":{"enabled":b("NODE_WD")},"adaptive":{"enabled":os.environ["NODE_ADAPTIVE"]=="1","last_probe":os.environ["NODE_ADAPTIVE_CLASS"]}}))'
+    return
+  fi
+  printf 'tunnel: %s  dial: %s  tls-hostname: %s  trusted-root: %s\n' "$mode" "$remote" "$tls_host" "${trusted_root:--}"
+  printf '  %s: %s\n' "$unit" "$(_unit_active "$unit")"
+}
 cmd_logs(){ journalctl -u "$SVC" -n "${1:-50}" --no-pager || true; }
 
 # ---------- logs all: jam-avari-ye HAME chiz baraye eshkal-zodai ----------
@@ -526,9 +583,9 @@ cmd_noise_status(){
 # masirhaye /channel va /tunnel dar backhaul hardcode shodand; nginx anha ra be backhaul-server proxy miknd.
 gen_backhaul_client_toml(){
   load_env
-  # transport-e client hamishe variant-e TLS-dar ast (wss/wssmux) chon be nginx:443 mizanad.
-  local domain="${BH_REMOTE:-}" transport="${BH_TRANSPORT:-wssmux}" token="${BH_TOKEN:-}" profile="${BH_PROFILE:-balanced}"
-  [ -n "$domain" ] || die "BH_REMOTE set nashode (ratholenode backhaul on <domain> <token> [transport] [profile])."
+  # sazgari: config-e ghadimi BH_REMOTE=domain ra be domain:443 tabdil kon; jadid endpoint-e kamel darad.
+  local remote="${BH_REMOTE_ADDR:-${BH_REMOTE:+${BH_REMOTE}:443}}" transport="${BH_TRANSPORT:-wssmux}" token="${BH_TOKEN:-}" profile="${BH_PROFILE:-balanced}"
+  [ -n "$remote" ] || die "BH_REMOTE_ADDR set nashode (ratholenode backhaul on <host:port|domain> <token> [transport] [profile])."
   [ -n "$token" ] || die "BH_TOKEN set nashode (az 'ratholectl backhaul show' rooye Iran)."
   # 'mux_con' (field-e aval) faghat samt-e server mani darad — inja dor rikhte mishavad.
   local muxver muxframe muxrecv muxstream pool
@@ -536,7 +593,7 @@ gen_backhaul_client_toml(){
   {
     echo "# tvlid khodkar tvst ratholenode — dasti virayesh nakon (core=backhaul, transport=${transport})"
     echo "[client]"
-    echo "remote_addr = \"${domain}:443\""
+    echo "remote_addr = \"${remote}\""
     echo "transport = \"${transport}\""
     echo "token = \"${token}\""
     echo "connection_pool = ${pool:-8}"
@@ -577,20 +634,21 @@ cmd_backhaul(){
   local sub="${1:-status}"; shift || true
   case "$sub" in
     on)
-      local domain="${1:-}" token="${2:-}" transport="${3:-wssmux}" profile="${4:-balanced}"
-      [ -n "$domain" ] && [ -n "$token" ] || die "estefade: ratholenode backhaul on <domain> <token> [transport] [profile]  (az 'ratholectl backhaul show' rooye Iran)"
-      echo "$domain" | grep -qE '^[A-Za-z0-9.-]+$' || die "domain namotabar ast."
+      local target="${1:-}" token="${2:-}" transport="${3:-wssmux}" profile="${4:-balanced}" remote
+      [ -n "$target" ] && [ -n "$token" ] || die "estefade: ratholenode backhaul on <domain|host:port> <token> [wssmux|wss|wsmux|ws] [profile]"
+      echo "$target" | grep -qE '^[A-Za-z0-9_.-]+(:[0-9]{1,5})?$' || die "endpoint namotabar ast."
       echo "$token" | grep -qE '^[A-Za-z0-9._=+/-]+$' || die "token namotabar ast."
-      # client be nginx:443 (TLS) mizanad → faghat variant-e TLS-dar. server samt-e Iran bedoon-e TLS ast.
+      # domain-e bedoon port = masir-e ghadimi TLS/443; endpoint-e port-dar mitavanad direct-IP bashad.
       case "$transport" in
-        wss|wssmux) ;;
-        ws|wsmux) die "transport-e client bayad TLS-dar bashad — be jaye '${transport}' az '${transport/ws/wss}' estefade kon (be nginx:443 vasl mishavad)." ;;
-        *) die "transport: wss|wssmux (tcpmux az nginx obor nmikonad)." ;;
+        wss|wssmux) remote="$target"; echo "$target" | grep -q ':' || remote="${target}:443" ;;
+        ws|wsmux) echo "$target" | grep -q ':' || die "baraye backhaul direct-IP bedoon TLS endpoint bayad host:port bashad."; remote="$target" ;;
+        *) die "transport: wss|wssmux|ws|wsmux (tcpmux mojaz nist)." ;;
       esac
       # profile bayad ba samt-e Iran YEKSAN bashad vagarna parametrhaye SMUX nemikhanand.
       backhaul_mux_profile "$profile" >/dev/null || die "profile namotabar (balanced|lossy|aggressive)."
       install_backhaul client
-      env_set BH_REMOTE "$domain"
+      env_set BH_REMOTE_ADDR "$remote"
+      sed -i '/^BH_REMOTE=/d' "$ENV_FILE" 2>/dev/null || true
       env_set BH_TOKEN "$token"
       env_set BH_TRANSPORT "$transport"
       env_set BH_PROFILE "$profile"
@@ -598,7 +656,8 @@ cmd_backhaul(){
       gen_backhaul_client_toml
       gen_backhaul_client_unit
       systemctl enable "$BH_CLI_SVC" >/dev/null 2>&1 || true
-      systemctl restart "$BH_CLI_SVC" 2>/dev/null && log "$BH_CLI_SVC start shod (mux → ${domain}:443, transport=${transport}, profile=${profile})." || err "start nashod; log: journalctl -u $BH_CLI_SVC -n 30"
+      systemctl restart "$BH_CLI_SVC" 2>/dev/null && log "$BH_CLI_SVC start shod (mux → ${remote}, transport=${transport}, profile=${profile})." || err "start nashod; log: journalctl -u $BH_CLI_SVC -n 30"
+      case "$transport" in ws|wsmux) warn "in masir TLS nadarad؛ baraye ramznegari/camouflage az wss/wssmux ya Noise estefade kon." ;; esac
       # backhaul JAYGOZIN-e kamel-e tunnel-e rathole baraye in node ast: samt-e Iran service az
       # server.toml hazf shode, pas rathole-client be service-i vasl mishavad ke digar nist va
       # crash-loop mikonad. khamoosh (va disable ta bad az reboot ham balaa nayayad).
@@ -610,7 +669,7 @@ cmd_backhaul(){
       systemctl disable --now "$BH_CLI_SVC" 2>/dev/null || true
       rm -f "$BH_CLI_UNIT" "$BH_TOML"; systemctl daemon-reload 2>/dev/null || true
       # pak kardan env-haye backhaul az node.env
-      sed -i '/^BH_REMOTE=/d;/^BH_TOKEN=/d;/^BH_TRANSPORT=/d;/^BH_PROFILE=/d' "$ENV_FILE" 2>/dev/null || true
+      sed -i '/^BH_REMOTE=/d;/^BH_REMOTE_ADDR=/d;/^BH_TOKEN=/d;/^BH_TRANSPORT=/d;/^BH_PROFILE=/d' "$ENV_FILE" 2>/dev/null || true
       # bargasht be tunnel-e pishfarz (ws/443) va roshan kardan-e dobare-ye rathole-client.
       env_set TUNNEL ws
       gen_client
@@ -621,7 +680,7 @@ cmd_backhaul(){
     status)
       load_env
       if systemctl is-active --quiet "$BH_CLI_SVC"; then
-        echo "backhaul client: $(c_g 'active')  → ${BH_REMOTE:-?}:443 (transport=${BH_TRANSPORT:-wssmux}, profile=${BH_PROFILE:-balanced})"
+        echo "backhaul client: $(c_g 'active')  → ${BH_REMOTE_ADDR:-${BH_REMOTE:-?}:443} (transport=${BH_TRANSPORT:-wssmux}, profile=${BH_PROFILE:-balanced})"
       else
         echo "backhaul client: $(c_y 'inactive')"
       fi
@@ -629,7 +688,7 @@ cmd_backhaul(){
     logs)
       journalctl -u "$BH_CLI_SVC" -n "${1:-40}" --no-pager 2>/dev/null || true
       ;;
-    *) die "estefade: ratholenode backhaul <on <domain> <token> [transport] [profile]|off|status|logs>" ;;
+    *) die "estefade: ratholenode backhaul <on <domain|host:port> <token> [transport] [profile]|off|status|logs>" ;;
   esac
 }
 
@@ -1203,6 +1262,8 @@ cmd_backup(){
   local items=()
   [ -f "$ENV_FILE" ] && items+=("${ENV_FILE#/}")
   [ -f "$SVC_FILE" ] && items+=("${SVC_FILE#/}")
+  load_env
+  [ -n "${TLS_TRUSTED_ROOT:-}" ] && [ -f "$TLS_TRUSTED_ROOT" ] && items+=("${TLS_TRUSTED_ROOT#/}")
   [ -d "$UP_DIR" ] && items+=("${UP_DIR#/}")
   [ "${#items[@]}" -gt 0 ] || die "chizi baraye backup nist."
   tar -czf "$out" -C / "${items[@]}" 2>/dev/null || die "sakht backup shekast khord."
@@ -1300,13 +1361,14 @@ ratholenode — mdirit klaint rathole (chnd service rooye yek tunnel)
   add-svc <name> <token> <port>  afzoodan service be haman tunnel
   rm-svc  <name>                 hazf service
   ls                             list serviceha
-  set <SERVER|RATHOLE_VERSION> <v>  taghir tanzim paih
+  set <SERVER|TLS_HOSTNAME|TLS_TRUSTED_ROOT|RATHOLE_VERSION> <v>  taghir tanzim paih
+  set-main <server:port> [tls_hostname] [trusted_root]  dial + SNI + public CA atomik
   check                          fght barresi tadakhol port ba nginx node
   tune                           eemal BBR + limithaye system (rfa 502 zir burst)
   kcp on <iran_ip:udp_port> <key> [profile] | off | status   switch tunnel be UDP+FEC (kcptun) ba estetar/profile ya bargasht be 443
   plain on <iran_ip:port> | off | status   tunnel-e websocket bedoon-e TLS (mostaghim be port HTTP-e sade rooye Iran)
   noise on <iran_ip:port> <pubkey> [pattern] | off | status   tunnel-e ramznegari-shode (Noise) bedoon-e TLS/cert
-  backhaul on <domain> <token> [transport] [profile] | off | status   core-e backhaul (SMUX) az haman domain/443 (transport: wss/wssmux, profile bayad ba Iran yeksan bashad)
+  backhaul on <domain|host:port> <token> [transport] [profile] | off | status   TLS/443: wss/wssmux؛ direct-IP bedoon TLS: ws/wsmux
 
   fakeweb <start|stop|rm> [port] web fik sabok baraye fallback inbound TLS (pishfarz 8081)
   upstream add <id> <server:port> [host]      afzoodan server Iran dovom/sevom (tunnel jda)
@@ -1355,17 +1417,18 @@ adaptive_probe_tcp(){
 }
 
 # probe WebSocket TLS (RFC 6455 handshake)
-# $1=host $2=port $3=path $4=header-haye ezafi (har khatt ba \r\n tamam shode, ekhtiari)
+# $1=dial_host $2=port $3=path $4=header-haye ezafi $5=tls_hostname $6=trusted_root
 # → healthy|ws_rejected|ws_timeout|tls_failed
 # $4 baraye backhaul lazem ast: masir-e '/channel' bedoon-e 'Authorization: Bearer <token>'
 # ba 401 rad mishavad va probe ESBHTBAHAN failover mikonad.
 adaptive_probe_ws_tls(){
   local host="$1" port="${2:-443}" path="${3:-/}" xhdr="${4:-}"
-  local t0 t1 ms out
+  local tls_host="${5:-$host}" trust="${6:-}" t0 t1 ms out
+  local ssl_args=(-connect "${host}:${port}" -servername "$tls_host" -verify_hostname "$tls_host" -verify_return_error -quiet)
+  [ -z "$trust" ] || { [ -f "$trust" ] || { echo "tls_failed:0"; return 1; }; ssl_args+=(-CAfile "$trust"); }
   t0="$(date +%s%3N 2>/dev/null || echo 0)"
   out="$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n%s\r\n' \
-    "$path" "$host" "$xhdr" | timeout 8 openssl s_client -connect "${host}:${port}" \
-      -servername "$host" -verify_return_error -quiet 2>/dev/null)" || {
+    "$path" "$tls_host" "$xhdr" | timeout 8 openssl s_client "${ssl_args[@]}" 2>/dev/null)" || {
     t1="$(date +%s%3N 2>/dev/null || echo "$t0")"; ms=$(( t1 - t0 ))
     echo "tls_failed:${ms}"; return 1
   }
@@ -1376,11 +1439,11 @@ adaptive_probe_ws_tls(){
 
 # probe WebSocket plain (bedoon TLS, baraye halat plain)
 adaptive_probe_ws_plain(){
-  local host="$1" port="${2:-8880}" path="${3:-/}"
+  local host="$1" port="${2:-8880}" path="${3:-/}" xhdr="${4:-}"
   local t0 t1 ms out
   t0="$(date +%s%3N 2>/dev/null || echo 0)"
-  out="$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n' \
-    "$path" "$host" | timeout 5 bash -c "
+  out="$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n%s\r\n' \
+    "$path" "$host" "$xhdr" | timeout 5 bash -c "
       exec 3<>/dev/tcp/${host}/${port}
       cat >&3
       timeout 3 cat <&3
@@ -1408,21 +1471,25 @@ adaptive_run_probe(){
   # mikonad. pas probe HATMAN bayad be '/' beravad; taen path-e digar (masalan WS_PATH-e ghadimi)
   # fakeweb ra mibinad (na '101') va adaptive ESBHTBAHAN failover mikonad.
   local host="${SERVER%%:*}" port="${SERVER##*:}" mode="${TUNNEL:-ws}"
+  local tls_host="${TLS_HOSTNAME:-$host}" tls_trust="${TLS_TRUSTED_ROOT:-}"
   local cls ms result
   local t0; t0="$(date +%s%3N 2>/dev/null || echo 0)"
   local failures=0
   [ -f "$ADAPTIVE_STATE" ] && failures="$(python3 -c "import json; d=json.load(open('$ADAPTIVE_STATE')); print(d.get('consecutive_failures',0))" 2>/dev/null || echo 0)"
 
   case "$mode" in
-    ws)   result="$(adaptive_probe_ws_tls "$host" "$port" "/" 2>/dev/null)" ;;
+    ws)   result="$(adaptive_probe_ws_tls "$host" "$port" "/" "" "$tls_host" "$tls_trust" 2>/dev/null)" ;;
     plain) result="$(adaptive_probe_ws_plain "$host" "${PLAIN_REMOTE##*:}" "/" 2>/dev/null)" ;;
     kcp)  result="$(adaptive_probe_kcp 2>/dev/null)" ;;
     # backhaul: control channel-e client rooye '/channel' hardcode ast (na '/') va nginx haman
     # masir ra be backhaul-server proxy mikonad — pas probe bayad be '/channel' beravad.
-    # host az BH_REMOTE miayad (domain-e Iran) va hamishe rooye 443 ba TLS ast.
-    # token HATMAN lazem ast vagarna backhaul ba 401 rad mikonad (=> failover-e ESBHTBAH).
-    backhaul) result="$(adaptive_probe_ws_tls "${BH_REMOTE:-$host}" 443 "/channel" \
-                          "Authorization: Bearer ${BH_TOKEN}"$'\r\n' 2>/dev/null)" ;;
+    # token HATMAN lazem ast vagarna backhaul ba 401 rad mikonad. TLS/direct az transport miayad.
+    backhaul)
+      local bhr="${BH_REMOTE_ADDR:-${BH_REMOTE:-$host}:443}" bhh="${bhr%%:*}" bhp="${bhr##*:}"
+      case "${BH_TRANSPORT:-wssmux}" in
+        ws|wsmux) result="$(adaptive_probe_ws_plain "$bhh" "$bhp" "/channel" "Authorization: Bearer ${BH_TOKEN}"$'\r\n' 2>/dev/null)" ;;
+        *) result="$(adaptive_probe_ws_tls "$bhh" "$bhp" "/channel" "Authorization: Bearer ${BH_TOKEN}"$'\r\n' 2>/dev/null)" ;;
+      esac ;;
     *)    result="healthy:0" ;;
   esac
 
@@ -1588,6 +1655,7 @@ main(){
     rm-svc)  shift; cmd_rm_svc "${1:-}" ;;
     ls)      cmd_ls ;;
     set)     shift; cmd_set "${1:-}" "${2:-}" ;;
+    set-main) shift; cmd_set_main "${1:-}" "${2:-}" "${3:-}" ;;
     check)   cmd_check ;;
     tune)    cmd_tune ;;
     kcp)     shift; cmd_kcp "$@" ;;

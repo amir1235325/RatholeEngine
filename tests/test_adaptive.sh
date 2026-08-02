@@ -5,12 +5,14 @@ set -uo pipefail
 ok(){ echo "ok - $*"; }
 fail(){ echo "not ok - $*" >&2; exit 1; }
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+TEST_TMP_ROOT="$(cygpath -w "$REPO_ROOT" 2>/dev/null || echo "$REPO_ROOT")"
 
 # ---- Task 5: probe functions vujood darand ----------------------------------------
 (
-  ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
+  ROOT="$(mktemp -d "${TEST_TMP_ROOT}/.test-adaptive.XXXXXX")"; trap 'rm -rf "$ROOT"' EXIT
   export RATHOLENODE_LIB_ONLY=1
   source "$REPO_ROOT/rathole-manager/ratholenode"
+  trap 'rm -rf "$ROOT"' EXIT
   # set AFTER source (ratholenode defaults ra override mikonim)
   ENV_FILE="$ROOT/node.env"; SVC_FILE="$ROOT/services.conf"; CLIENT_TOML="$ROOT/client.toml"
   printf 'SERVER=panel.example:443\nWS_PATH=/_rh/test\n' > "$ENV_FILE"
@@ -23,13 +25,21 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
   result="$(adaptive_probe_tcp "127.0.0.1" "1" 2>/dev/null || echo 'fail')"
   [[ "$result" =~ tcp_timeout|tcp_refused|tcp_failed|fail ]] || fail "adaptive_probe_tcp natijeh-e namotabar: $result"
   ok 'adaptive_probe_tcp baraye port-e basteh: fail/timeout bargardand'
+
+  # trusted-root-e gomshode bayad ghabl az openssl fail shavad; verify hichvaght disable nemishavad.
+  result="$(adaptive_probe_ws_tls "127.0.0.1" "443" "/" "" "1.2.3.4" "$ROOT/missing-ca.crt" 2>/dev/null || true)"
+  [ "$result" = "tls_failed:0" ] || fail "trusted-root-e gomshode rad nashod: $result"
+  declare -f adaptive_probe_ws_tls | grep -q -- '-verify_return_error' || fail 'TLS verify_return_error hazf shode'
+  declare -f adaptive_probe_ws_tls | grep -q -- '-CAfile' || fail 'trusted_root be openssl probe vasl nist'
+  ok 'probe TLS trusted_root ra estefade mikonad va verify ra khamoosh nemikonad'
 )
 
 # ---- Task 5: cmd_adaptive tabe vojood darad ----------------------------------------
 (
-  ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
+  ROOT="$(mktemp -d "${TEST_TMP_ROOT}/.test-adaptive.XXXXXX")"; trap 'rm -rf "$ROOT"' EXIT
   export RATHOLENODE_LIB_ONLY=1
   source "$REPO_ROOT/rathole-manager/ratholenode"
+  trap 'rm -rf "$ROOT"' EXIT
   ENV_FILE="$ROOT/node.env"; SVC_FILE="$ROOT/services.conf"; CLIENT_TOML="$ROOT/client.toml"
   printf 'SERVER=panel.example:443\nWS_PATH=/_rh/test\n' > "$ENV_FILE"
   : > "$SVC_FILE"
@@ -40,28 +50,24 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 # ---- Task 5: adaptive_run_probe → state JSON barresi field-ha ---------------------
 (
-  ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
+  ROOT="$(mktemp -d "${TEST_TMP_ROOT}/.test-adaptive.XXXXXX")"; trap 'rm -rf "$ROOT"' EXIT
   export RATHOLENODE_LIB_ONLY=1
   source "$REPO_ROOT/rathole-manager/ratholenode"
+  trap 'rm -rf "$ROOT"' EXIT
   ENV_FILE="$ROOT/node.env"; SVC_FILE="$ROOT/services.conf"; CLIENT_TOML="$ROOT/client.toml"
   ADAPTIVE_STATE="$ROOT/adaptive-state.json"
   printf 'SERVER=panel.example:443\nWS_PATH=/_rh/test\n' > "$ENV_FILE"
   : > "$SVC_FILE"
 
-  # probe dar sandoz fail mishavad (openssl nist ya server nist) — chap mikonim va check mikonim
+  # probe ra mock mikonim ta in test faghat contract-e state JSON ra besanjad, na shabake ra.
+  adaptive_probe_ws_tls(){ echo "tls_failed:7"; return 1; }
   adaptive_run_probe 2>/dev/null || true
 
-  if [ -f "$ADAPTIVE_STATE" ]; then
-    python3 -c "
-import json, sys
-d = json.load(open('$ADAPTIVE_STATE'))
-required = {'time','current','classification','latency_ms','consecutive_failures'}
-missing = required - set(d.keys())
-if missing: sys.exit(f'field-haye gomshode: {missing}')
-# check secret leak
-for k,v in d.items():
-    if '/_rh/' in str(v): sys.exit(f'WS_PATH dar JSON leak shod: {k}={v}')
-" || fail 'adaptive state JSON field-haye lazem ra nadarad ya secret leak dade'
+  if [ -s "$ADAPTIVE_STATE" ]; then
+    jq -e 'has("time") and has("current") and has("classification") and
+           has("latency_ms") and has("consecutive_failures") and
+           (tostring | contains("/_rh/") | not)' "$(cygpath -w "$ADAPTIVE_STATE" 2>/dev/null || echo "$ADAPTIVE_STATE")" >/dev/null \
+      || fail 'adaptive state JSON field-haye lazem ra nadarad ya secret leak dade'
     ok 'adaptive state JSON field-haye motabar darad va secret-ha leak nashode'
   else
     ok '(skip: probe dar sandoz baste fail shod — state naneveshte shod, manteghi ast)'
@@ -70,9 +76,10 @@ for k,v in d.items():
 
 # ---- Task 6: adaptive_should_switch — barresi threshold/cooldown ------------------
 (
-  ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
+  ROOT="$(mktemp -d "${TEST_TMP_ROOT}/.test-adaptive.XXXXXX")"; trap 'rm -rf "$ROOT"' EXIT
   export RATHOLENODE_LIB_ONLY=1
   source "$REPO_ROOT/rathole-manager/ratholenode"
+  trap 'rm -rf "$ROOT"' EXIT
   ENV_FILE="$ROOT/node.env"; SVC_FILE="$ROOT/services.conf"; CLIENT_TOML="$ROOT/client.toml"
   printf 'SERVER=panel.example:443\nWS_PATH=/_rh/test\nTUNNEL=ws\n' > "$ENV_FILE"
   : > "$SVC_FILE"

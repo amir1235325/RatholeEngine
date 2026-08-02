@@ -3,7 +3,7 @@
 
 # noskhe-ye rathole-manager (panel/node/hub). moqe-e release in adad ba tag hamahang mishavad.
 # package.sh/CI mitavanad in ra be tag-e vaghei stamp konad; agar dast taghir dadi، bedoon 'v' bezar.
-MANAGER_VERSION="1.6.3"
+MANAGER_VERSION="1.7.0"
 
 c_g(){ printf '\033[1;32m%s\033[0m' "$*"; }
 c_r(){ printf '\033[1;31m%s\033[0m' "$*"; }
@@ -12,8 +12,34 @@ log(){ printf '%s %s\n' "$(c_g '[+]')" "$*"; }
 warn(){ printf '%s %s\n' "$(c_y '[*]')" "$*"; }
 err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
 die(){ err "$*"; exit 1; }
-ask_yn(){ local p="$1" a; read -rp "$p [y/N]: " a; [[ "$a" =~ ^[Yy]$ ]]; }
 need_root(){ [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad (sudo)."; }
+
+# ---------- porsesh-e taamoli-ye amn (tty-safe + bounded) ----------
+# CHERA (bug-e «nasb dar marhale-ye tanzimat-e avalie saat-ha motevaghef mishavad»):
+#   1) `read -rp` rooye stdin-e GHEYR-terminal (curl|bash vaghti producer hanooz pipe ra
+#      nabaste — link-e kond/filter-shode az Iran —، kanal-e SSH، hub) TA ABAD montazer
+#      mimanad. bad-tar: bash prompt-e `read -p` ra FAGHAT vaghti minevisad ke vorodi
+#      terminal bashad، pas karbar hich payami nemibinad va nasb bi-seda mimirad.
+#   2) `[ -r /dev/tty ]` DOROGH migoyad: node-e device hamishe readable ast hatta vaghti
+#      process controlling terminal NADARAD — pas shakhes-e «tty darim» nist.
+# tanha rah-e motmaen BAZ KARDAN-e /dev/tty ast (haman elgo-ye dorost-e bootstrap.sh).
+# agar hich tty-ye vaghei nabashad HARGEZ montazer nemimanim (meghdar-e khali barmigardad).
+RTH_TTY=""
+if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then RTH_TTY="/dev/tty"; fi
+has_tty(){ [ -t 0 ] || [ -n "$RTH_TTY" ]; }
+
+# backstop-e zamani: hatta ba tty-ye VAGHEI (masalan screen/tmux-e detach-shode ya terminal-i
+# ke kasi payash nist) nabayad ta abad gir konim. sanie — ba RTH_READ_TIMEOUT ghabl-e taghir.
+rth_read(){   # estefade: rth_read VAR "prompt"
+  local __v="$1" __p="${2:-}" __a="" __t="${RTH_READ_TIMEOUT:-300}"
+  if [ -t 0 ]; then read -rt "$__t" -p "$__p" __a
+  elif [ -n "$RTH_TTY" ]; then read -rt "$__t" -p "$__p" __a < "$RTH_TTY"
+  else __a=""; fi
+  printf -v "$__v" '%s' "$__a"
+}
+# bedoon-e tty (ya baad az timeout) javab HAMISHE «na» ast — pishfarz-e amn baraye
+# porsesh-haye makhrab (hazf/bazneveshtan).
+ask_yn(){ local a; rth_read a "$1 [y/N]: "; [[ "$a" =~ ^[Yy]$ ]]; }
 
 # mirror-haye ghproxy baraye dor-zadan-e filtering-e Iran (hamsan-e install.sh/install-panel.sh).
 RTH_MIRRORS=("" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/")
@@ -108,7 +134,10 @@ install_kcptun(){
   log "download kcptun ${ver} ($role)..."
   tmp="$(mktemp -d)"
   url="${base}/${ver}/kcptun_linux_${arch}.tar.gz"
-  curl -fsSL "$url" -o "$tmp/k.tgz" || { rm -rf "$tmp"; die "download kcptun shekast khord."; }
+  # gard-e transfer-e raked (bebin tozih dar install-node.sh): bedoon-e in, curl zir-e DPI
+  # ta abad montazer mimanad chon ettesal bargharar shode vali dade nemiayad.
+  curl -fsSL --connect-timeout 20 --speed-limit 1024 --speed-time 30 --retry 2 \
+       "$url" -o "$tmp/k.tgz" || { rm -rf "$tmp"; die "download kcptun shekast khord."; }
   tar -xzf "$tmp/k.tgz" -C "$tmp" || { rm -rf "$tmp"; die "baz kardan arshiv kcptun shekast khord."; }
   install -m755 "$tmp/${role}_linux_${arch}" "$bin" || { rm -rf "$tmp"; die "nasb bainri kcptun shekast khord."; }
   rm -rf "$tmp"

@@ -9,6 +9,63 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-02
+
+do bakhsh: (a) nasb digar dar marhale-ye «tanzimat avlih» gir nemikonad، (b) tunnel mitavanad
+rooye IP-e khali (bedoon-e damnh) bargharar shavad va hub neshan midahad har tunnel VAGHEAN
+chetor vasl shode.
+
+### Fixed
+- **nasb dar marhale-ye «tanzimat avlih (init)» SAAT-HA bi-seda motevaghef mishod.**
+  do ayb-e ba-ham-marbut:
+  1. `read -rp` rooye stdin-e **gheyr-terminal ke hanooz baste nashode** (curl|bash ba link-e
+     kond/filter-shode az Iran — curl hanooz pipe ra nabaste —، kanal-e SSH، ya hub) **TA ABAD**
+     montazer mimanad. bad-tar: bash prompt-e `read -p` ra **FAGHAT** vaghti minevisad ke vorodi
+     terminal bashad — pas karbar **hich payami nemidid** va nasb bi-seda mimord. (ba EOF ham
+     bug bood: javab bi-sar-o-seda «na» mishod، pas `handle_conflicts` config-haye mote'arez-e
+     443 ra jabeja nemikard va `nginx -t` baad-esh shekast mikhord.)
+  2. `[ -r /dev/tty ]` be onvane shakhes-e «tty darim» estefade mishod ke **DOROGH** migoyad:
+     node-e device hamishe readable ast، hatta vaghti process controlling terminal **nadarad**.
+  fix: hameye porsesh-ha az yek helper-e moshtarak rad mishavand ke /dev/tty ra **VAGHEAN BAZ**
+  mikonad (haman elgo-ye dorost ke az v1.4.x faghat dar `bootstrap.sh` bood — `common.sh`،
+  `install-panel.sh`، `ratholectl`، `install-hub.sh` va uninstaller-ha ja mande boodand)، va
+  yek **backstop-e zamani** darad (`RTH_READ_TIMEOUT`، pishfarz 300s) ta terminal-e bi-morajea
+  (screen/tmux-e detach-shode) ham nasb ra gir nayandazad. bedoon-e tty javab hamishe «na» ast
+  (pishfarz-e amn baraye porsesh-haye makhrab). test-e regression: `tests/test_tty_prompt.sh`.
+- **`certbot` bedoon-e hich mahdudiat-e zamani dar `init` ejra mishod** — an ham daghighan
+  vaghti nginx ra khamoosh karde boodim. az dakhel-e Iran (ACME-e Let's Encrypt aksaran
+  filtr/kond ast) mitavanest saat-ha bemanad. hala bounded ast (`RATHOLE_CERTBOT_TIMEOUT`، 300s).
+- **download-haye nasb rooye transfer-e RAKED ta abad montazer mimandand:** DPI ettesal ra
+  bargharar mikonad va baad jarian ra motevaghef — `--connect-timeout` in halat ra
+  **nemigirad**. hala `--speed-limit/--speed-time` darand (download-e kond-vali-dar-hal-pishraft
+  koshte nemishavad): `install-node.sh` (rathole) va `common.sh` (kcptun).
+- **menu-ye `ratholectl` bedoon-e tty halghe-ye BI-NAHAYAT mizad:** `read` khali barmigasht va
+  `*) err "gzinh namotabar."` ta abad chap mishod (spin-e CPU). hala foran khárej mishavad.
+
+### Added
+- **tunnel rooye IP-e khali (bedoon-e damnh):** `ratholectl ip-cert <IPv4> [days]` yek gvahi-e
+  self-signed-e **IP-SAN** misazad va vhost-e an ra `default_server` mikonad — damnh va
+  gvahi-e omoomi-ye panel **dast-nakhorde** mimanad (WSS-e bare-IP SNI-e ghabel-eteka nadarad).
+  hamrah-e `ip-cert-show` (chap-e public cert baraye trust rooye node) va `ip-cert-off`.
+  kelid-e khosusi **hargez** az server-e Iran khárej nemishavad.
+- **`ratholenode set-main <server:port> [tls_hostname] [trusted_root]`:** endpoint-e dial،
+  SNI/cert hostname va trust-root ra **atomik** set mikonad — pas node mitavanad be IP dial
+  konad vali cert ra ba hostname-e dorost verify konad (verify hichvaght khamoosh nemishavad).
+- **`ratholenode status --json`:** transport، endpoint، SNI، TLS/encryption va vaziat-e
+  service be sorat-e normalized (hub an ra masraf mikonad، ba fallback baraye node-haye ghadimi).
+- **backhaul-e direct-IP:** `ratholectl backhaul on <port> <ws|wsmux> <profile> direct_ip` —
+  bind rooye `0.0.0.0` bedoon-e obur az nginx. halat-e ghadimi (`nginx_tls`، az 443) pishfarz
+  mimanad. rooye 443 rad mishavad (tadakhol ba nginx) va hoshdar-e «TLS nadarad» dade mishavad.
+- **hub:** endpoint-e `POST /api/ip-tls/prepare` (gvahi ra rooye Iran misazad va public cert ra
+  rooye node nasb mikonad)، action-haye jadid-e argv-only ba etebarsanji، va UI-i ke baad az
+  har action refresh mishavad، dokme-ye On/Off-e tekrari ra bar asas-e vaziat penhan mikonad va
+  endpoint/SNI/encryption/live-e har tunnel ra neshan midahad.
+
+### Changed
+- `rth_read`/`has_tty`/`ask_yn` faghat dar `common.sh` tarif mishavand (copy-e ghadimi va
+  ma'yoob-e `ratholectl` hazf shod). `ratholectl` agar `common.sh`-e ghadimi bebinad sarih
+  mimirad، na inke bi-seda `rth_read: command not found` bedahad.
+
 ## [1.6.3] - 2026-07-31
 
 release-e paydari (hardening). se class-e khata ke mitavanest BI-SEDA dade ya config ra

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """test_hub.py — task 8: barresi build_node_cmd adaptive allow-list + input validation"""
 import sys, os, unittest, importlib.util, types
+from unittest import mock
 
 # ---- hub.py ra load mikonim bedoon ajra-ye main ----
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -158,6 +159,88 @@ class TestIranPerNodeActions(unittest.TestCase):
         for act in ("noise_node_on", "backhaul_node_on"):
             self.assertIsNone(hub.build_iran_cmd(act, {"name": "trk02; rm -rf /"}))
             self.assertIsNone(hub.build_iran_cmd(act, {"name": "trk02\n"}))
+
+
+class TestIpAndBackhaulModes(unittest.TestCase):
+    def test_set_main_ip_with_sni(self):
+        self.assertEqual(build_node_cmd("set_main", {"server": "1.2.3.4:443", "tls_hostname": "edge.example.com"}),
+                         ["ratholenode", "set-main", "1.2.3.4:443", "edge.example.com"])
+
+    def test_set_main_ip_with_self_signed_root(self):
+        self.assertEqual(
+            build_node_cmd("set_main", {"server": "1.2.3.4:443", "tls_hostname": "1.2.3.4",
+                                        "tls_trusted_root": "/etc/rathole/ip-root-ca.crt"}),
+            ["ratholenode", "set-main", "1.2.3.4:443", "1.2.3.4", "/etc/rathole/ip-root-ca.crt"],
+        )
+
+    def test_set_main_rejects_injection(self):
+        self.assertIsNone(build_node_cmd("set_main", {"server": "1.2.3.4:443;id", "tls_hostname": "edge.example.com"}))
+        self.assertIsNone(build_node_cmd("set_main", {"server": "1.2.3.4:443", "tls_hostname": "x;id"}))
+        self.assertIsNone(build_node_cmd("set_main", {"server": "1.2.3.4:443", "tls_hostname": "1.2.3.4",
+                                                        "tls_trusted_root": "/etc/rathole/ca.crt;id"}))
+        self.assertIsNone(build_node_cmd("set_main", {"server": "1.2.3.4:443", "tls_trusted_root": "/etc/rathole/ca.crt"}))
+
+    def test_backhaul_direct_ip(self):
+        tok = "a" * 40
+        self.assertEqual(build_node_cmd("backhaul_on", {"mode": "direct_ip", "remote_addr": "1.2.3.4:3080",
+                                                         "token": tok, "transport": "wsmux", "profile": "balanced"}),
+                         ["ratholenode", "backhaul", "on", "1.2.3.4:3080", tok, "wsmux", "balanced"])
+        self.assertIsNone(build_node_cmd("backhaul_on", {"mode": "direct_ip", "remote_addr": "1.2.3.4:3080",
+                                                          "token": tok, "transport": "wssmux", "profile": "balanced"}))
+
+    def test_iran_backhaul_mode(self):
+        self.assertEqual(hub.build_iran_cmd("backhaul_on", {"port": "3080", "transport": "wsmux",
+                                                             "profile": "balanced", "mode": "direct_ip"}),
+                         ["ratholectl", "backhaul", "on", "3080", "wsmux", "balanced", "direct_ip"])
+        self.assertIsNone(hub.build_iran_cmd("backhaul_on", {"port": "443", "transport": "wsmux",
+                                                              "profile": "balanced", "mode": "direct_ip"}))
+
+
+class TestPrepareIpTls(unittest.TestCase):
+    def _handler(self, inventory):
+        handler = object.__new__(hub.Handler)
+        handler._find = lambda name: next((s for s in inventory if s["name"] == name), None)
+        handler._user = lambda: "test"
+        handler._send = lambda code, body: {"status": code, "body": body}
+        return handler
+
+    def test_prepare_keeps_private_key_on_iran(self):
+        iran = {"name": "ir1", "role": "iran", "host": "1.2.3.4"}
+        node = {"name": "n1", "role": "node", "host": "5.6.7.8"}
+        calls = []
+
+        def fake_run(server, cmd):
+            calls.append((server["name"], cmd))
+            if cmd[1] == "ip-cert-show":
+                return {"rc": 0, "out": "-----BEGIN CERTIFICATE-----\nTU9DSw==\n-----END CERTIFICATE-----\n", "err": ""}
+            return {"rc": 0, "out": "ok", "err": ""}
+
+        put = types.SimpleNamespace(returncode=0, stderr="")
+        with mock.patch.object(hub, "MOCK", False), \
+             mock.patch.object(hub, "run_on_server", side_effect=fake_run), \
+             mock.patch.object(hub, "get_config", return_value={}), \
+             mock.patch.object(hub, "_ssh_base", return_value=["ssh", "node"]), \
+             mock.patch.object(hub.subprocess, "run", return_value=put) as install, \
+             mock.patch.object(hub, "audit_log"):
+            res = self._handler([iran, node])._prepare_ip_tls({"iran": "ir1", "node": "n1"})
+
+        self.assertEqual(res["status"], 200)
+        self.assertTrue(res["body"]["ok"])
+        self.assertEqual(res["body"]["tls_trusted_root"], "/etc/rathole/ip-root-ca.crt")
+        self.assertNotIn("private", str(res["body"]).lower())
+        self.assertEqual(calls, [("ir1", ["ratholectl", "ip-cert", "1.2.3.4"]),
+                                 ("ir1", ["ratholectl", "ip-cert-show", "1.2.3.4"])])
+        remote = install.call_args.args[0]
+        self.assertEqual(remote[-6:], ["install", "-D", "-m", "0644", "/dev/stdin", "/etc/rathole/ip-root-ca.crt"])
+        self.assertIn("BEGIN CERTIFICATE", install.call_args.kwargs["input"])
+
+    def test_prepare_rejects_non_ip_inventory_host(self):
+        iran = {"name": "ir1", "role": "iran", "host": "iran.example.com"}
+        node = {"name": "n1", "role": "node", "host": "5.6.7.8"}
+        with mock.patch.object(hub, "run_on_server") as remote:
+            res = self._handler([iran, node])._prepare_ip_tls({"iran": "ir1", "node": "n1"})
+        self.assertEqual(res["status"], 400)
+        remote.assert_not_called()
 
 
 class TestUpstreamLogsStatus(unittest.TestCase):

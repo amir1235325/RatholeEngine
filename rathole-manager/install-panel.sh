@@ -15,13 +15,30 @@ log(){ printf '%s %s\n' "$(c_g '[+]')" "$*"; }
 warn(){ printf '%s %s\n' "$(c_y '[*]')" "$*"; }
 err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
 die(){ err "$*"; exit 1; }
-ask_yn(){ local p="$1" a; read -rp "$p [y/N]: " a; [[ "$a" =~ ^[Yy]$ ]]; }
 
 [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad (sudo bash install-panel.sh)."
 
-is_tty(){ [ -t 0 ] || [ -r /dev/tty ]; }
-# porsesh-e amn zir-e curl|bash: az /dev/tty bekhan agar stdin tty nabashad
-ask_tty(){ local p="$1" a; if [ -t 0 ]; then read -rp "$p" a; else read -rp "$p" a </dev/tty; fi; printf '%s' "$a"; }
+# ---------- porsesh-e taamoli-ye amn (tty-safe + bounded) ----------
+# in script MOSTAGHEL ejra mishavad (ghabl az nasb-e common.sh), pas haman elgo inja copy ast.
+# CHERA: `read -rp` rooye stdin-e GHEYR-terminal — masalan `curl|sudo bash` vaghti curl hanooz
+# pipe ra nabaste (link-e kond/filter-shode az Iran) — TA ABAD montazer mimanad VA bash prompt
+# ra ham chap NEMIKONAD (prompt-e `read -p` faghat baraye vorodi-ye terminal neveshte mishavad).
+# natije daghighan hamin bug bood: nasb dar marhale-ye «tanzimat avlih» bi-seda saat-ha migir.
+# hamchenin `[ -r /dev/tty ]` DOROGH migoyad (device hamishe readable ast، hatta bedoon-e
+# controlling terminal) — pas /dev/tty ra VAGHEAN BAZ mikonim, mesl-e bootstrap.sh.
+TTY_DEV=""
+if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then TTY_DEV="/dev/tty"; fi
+is_tty(){ [ -t 0 ] || [ -n "$TTY_DEV" ]; }
+# backstop-e zamani ta terminal-e bi-morajea (screen-e detach-shode) ham nasb ra gir nayandazad.
+ask_tty(){
+  local p="$1" a="" t="${RTH_READ_TIMEOUT:-300}"
+  if [ -t 0 ]; then read -rt "$t" -p "$p" a
+  elif [ -n "$TTY_DEV" ]; then read -rt "$t" -p "$p" a < "$TTY_DEV"
+  fi
+  printf '%s' "$a"
+}
+# bedoon-e tty (ya baad az timeout) javab HAMISHE «na» ast — pishfarz-e amn.
+ask_yn(){ local a; a="$(ask_tty "$1 [y/N]: ")"; [[ "$a" =~ ^[Yy]$ ]]; }
 
 # ---------- halat-e nasb: takmil (resume) ya az-no (fresh) ----------
 # flaghaye --fresh/--repair az argumenthaye init joda mishavand (baghi be `init` pass mishavad).

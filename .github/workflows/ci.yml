@@ -48,6 +48,14 @@ jobs:
         run: |
           bash tests/test_node_config.sh
 
+      - name: install prompts must never hang (tty/pipe regression)
+        run: |
+          bash tests/test_tty_prompt.sh
+
+      - name: nginx control-path + IP-TLS vhost tests
+        run: |
+          bash tests/test_nginx_control_path.sh
+
       - name: adaptive probe + controller tests
         run: |
           bash tests/test_adaptive.sh

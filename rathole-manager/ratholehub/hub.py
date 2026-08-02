@@ -470,6 +470,10 @@ def mock_run(server, cmd_args):
         return {"rc": 0, "out": "manager_version=1.4.7\nrole=panel\nrathole_version=0.5.0", "err": ""}
     if j == "ratholenode version":
         return {"rc": 0, "out": "manager_version=1.4.6\nrole=node\nrathole_version=0.5.0", "err": ""}
+    if cmd_args[:2] == ["ratholectl", "ip-cert"]:
+        return {"rc": 0, "out": "WSS-e self-signed faal shod.", "err": ""}
+    if cmd_args[:2] == ["ratholectl", "ip-cert-show"]:
+        return {"rc": 0, "out": "-----BEGIN CERTIFICATE-----\nTU9DSw==\n-----END CERTIFICATE-----\n", "err": ""}
     if j == "ratholectl status --json":
         return {"rc": 0, "out": json.dumps({
             "domain": "rp01.l1t.ir", "public_ip": "5.202.4.40",
@@ -627,7 +631,7 @@ def parse_backhaul_connect(text):
     for line in (text or "").splitlines():
         # NOKTE: 'wssmux' bayad GHABL az 'wss' biayad — alternation-e Python chap-be-rast ast va
         # ba (wss|wssmux) faghat 'wss' match mishavad va 'mux ...' baghi mimanad (profile gom mishavad).
-        m = re.search(r"ratholenode\s+backhaul\s+on\s+(\S+)\s+([A-Fa-f0-9]{16,64})\s+(wssmux|wss)"
+        m = re.search(r"ratholenode\s+backhaul\s+on\s+(\S+)\s+([A-Fa-f0-9]{16,64})\s+(wssmux|wsmux|wss|ws)"
                       r"(?:\s+(balanced|lossy|aggressive))?", line)
         if m:
             return {"domain": m.group(1), "token": m.group(2),
@@ -952,6 +956,8 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/servers/([A-Za-z0-9_-]+)/action$", p)
         if m:
             return self._action(m.group(1), self._body_json())
+        if p == "/api/ip-tls/prepare":
+            return self._prepare_ip_tls(self._body_json())
         return self._send(404, {"error": "not found"})
 
     def do_PUT(self):
@@ -1099,6 +1105,48 @@ class Handler(BaseHTTPRequestHandler):
         audit_log(self._user(), name, "edit_server", "metadata", 0)
         return self._send(200, {"ok": True, "server": found})
 
+    def _prepare_ip_tls(self, d):
+        iran_name = str(d.get("iran", "")); node_name = str(d.get("node", ""))
+        if not RE_NAME.match(iran_name) or not RE_NAME.match(node_name):
+            return self._send(400, {"error": "invalid server name"})
+        iran = self._find(iran_name); node = self._find(node_name)
+        if not iran or iran.get("role") != "iran" or not node or node.get("role") != "node":
+            return self._send(400, {"error": "iran/node pair not found"})
+        ip = str(iran.get("host", ""))
+        try:
+            import ipaddress
+            ipaddress.IPv4Address(ip)
+        except ValueError:
+            return self._send(400, {"error": "Iran inventory host must be an IPv4 address"})
+        # ip-cert yek vhost/default cert-e IP ezafe mikonad; domain va cert-e omoomi-ye panel ra
+        # avaz nemikonad. in invariant baraye node-haye domain-based-e mojood zaroori ast.
+        made = run_on_server(iran, ["ratholectl", "ip-cert", ip])
+        if made.get("rc") != 0:
+            return self._send(200, {"ok": False, **made})
+        pub = run_on_server(iran, ["ratholectl", "ip-cert-show", ip])
+        pem = pub.get("out", "")
+        if (pub.get("rc") != 0 or len(pem) > 65536 or
+                not pem.startswith("-----BEGIN CERTIFICATE-----") or
+                not pem.rstrip().endswith("-----END CERTIFICATE-----")):
+            return self._send(200, {"ok": False, "rc": pub.get("rc", 1), "out": "", "err": "public certificate read failed"})
+        cfg = get_config(); trust = "/etc/rathole/ip-root-ca.crt"
+        if MOCK:
+            rc, err = 0, ""
+        else:
+            remote = _ssh_base(cfg, node) + ["install", "-D", "-m", "0644", "/dev/stdin", trust]
+            try:
+                put = subprocess.run(remote, input=pem, capture_output=True, text=True, timeout=30)
+                rc, err = put.returncode, _strip_ansi(put.stderr)
+            except subprocess.TimeoutExpired:
+                rc, err = 124, "SSH timeout while installing public certificate"
+            except Exception as e:
+                rc, err = 1, str(e)
+        audit_log(self._user(), node_name, "ip_tls_prepare", "install public certificate for %s" % ip, rc)
+        if rc != 0:
+            return self._send(200, {"ok": False, "rc": rc, "out": "", "err": err})
+        return self._send(200, {"ok": True, "rc": 0, "server": "%s:443" % ip,
+                                "tls_hostname": ip, "tls_trusted_root": trust})
+
     def _action(self, name, d):
         s = self._find(name)
         if not s:
@@ -1161,11 +1209,21 @@ class Handler(BaseHTTPRequestHandler):
                 ov["reachable"] = False; ov["error"] = r.get("err", "") or ("rc=%s" % r.get("rc")); return self._send(200, ov)
             nls = parse_node_ls(r.get("out", ""))
             ov["main_server"] = nls["server"]; ov["services"] = nls["services"]
+            # Node-haye jadid JSON-e normalized midahand; node-haye ghadimi fallback-e parser ra negah midarand.
+            try:
+                raw = R(["ratholenode", "status", "--json"]).get("out", "") or "{}"
+                node_status = json.loads(raw)
+                if isinstance(node_status, dict) and "main" in node_status:
+                    ov["status"] = node_status
+                    ov["main_tunnel"] = node_status.get("main", {}).get("transport", "ws")
+            except Exception:
+                ov["status"] = {}
             ov["kcp"] = parse_kcp_status(R(["ratholenode", "kcp", "status"]).get("out", ""))
             ov["noise"] = parse_noise_status(R(["ratholenode", "noise", "status"]).get("out", ""))
             ups = parse_upstream_ls(R(["ratholenode", "upstream", "ls"]).get("out", ""))
             ov["upstreams"] = ups["upstreams"]
-            ov["main_tunnel"] = (ups.get("main") or {}).get("tunnel", ov["kcp"].get("mode", "ws"))
+            if not ov.get("main_tunnel"):
+                ov["main_tunnel"] = (ups.get("main") or {}).get("tunnel", ov["kcp"].get("mode", "ws"))
             ov["version"] = parse_version(R(["ratholenode", "version"]).get("out", ""))
         return self._send(200, ov)
 
@@ -1246,8 +1304,23 @@ class Handler(BaseHTTPRequestHandler):
         if not info or not info.get("token"):
             return self._send(200, {"ok": False, "error": "backhaul roshan nist ya token peida nashod",
                                     "raw": show.get("out", "") + show.get("err", "")})
-        return self._send(200, {"ok": True, "domain": info["domain"], "token": info["token"],
-                                "transport": info.get("transport", "wssmux"),
+        status = {}
+        try:
+            status = json.loads(run_on_server(s, ["ratholectl", "status", "--json"]).get("out", "") or "{}")
+        except Exception:
+            pass
+        bh = (status.get("features") or {}).get("backhaul") or {}
+        mode = bh.get("mode", "nginx_tls")
+        transport = bh.get("transport", info.get("transport", "wssmux"))
+        if mode == "direct_ip":
+            remote = "%s:%s" % (status.get("public_ip") or s.get("host"), bh.get("port") or "")
+            client_transport = transport
+        else:
+            remote = info.get("domain")
+            client_transport = info.get("transport", "wssmux")
+        return self._send(200, {"ok": True, "domain": info.get("domain", ""), "remote_addr": remote,
+                                "mode": mode, "token": info["token"], "transport": client_transport,
+                                "tls": mode == "nginx_tls", "encrypted": mode == "nginx_tls",
                                 "profile": info.get("profile", "balanced")})
 
     def _nodeconnect(self, name, node):
@@ -1283,8 +1356,10 @@ class Handler(BaseHTTPRequestHandler):
         if s.get("role") != "iran":
             return self._send(400, {"error": "mainconnect fght baraye server iran ast"})
         server, domain = iran_main_server(s)
+        dial_ip = "%s:443" % s.get("host", "") if s.get("host") else ""
         return self._send(200, {"ok": bool(server), "server": server,
-                                "domain": domain, "host": s.get("host", "")})
+                                "domain": domain, "tls_hostname": domain,
+                                "dial_ip": dial_ip, "host": s.get("host", "")})
 
     def _discover(self, name):
         s = self._find(name)
@@ -1309,7 +1384,8 @@ class Handler(BaseHTTPRequestHandler):
         if not s:
             return self._send(404, {"error": "server not found"})
         role = s.get("role")
-        checks = (["doctor", "kcp_status", "noise_status"] if role == "iran" else ["kcp_status", "noise_status", "upstream_ls"])
+        checks = (["status", "doctor", "kcp_status", "plain_status", "direct_status", "noise_status", "backhaul_status"]
+                  if role == "iran" else ["status", "kcp_status", "plain_status", "noise_status", "backhaul_status", "watchdog_status", "adaptive_status", "upstream_ls"])
         out = {}
         for act in checks:
             cmd = build_cmd(role, act, {})

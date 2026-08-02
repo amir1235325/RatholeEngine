@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # install-node.sh — nasab samt node kharej (rathole client)
 # nasb tazh:
-#   sudo bash install-node.sh --server btli.ir:443 --name trk01 --token <T> --inbound-port 2087 \
+#   sudo bash install-node.sh --server btli.ir:443 [--tls-hostname btli.ir] \
+#        [--tls-trusted-root /etc/rathole/ip-root-ca.crt] --name trk01 --token <T> --inbound-port 2087 \
 #        [--api-token <T> --api-inbound-port 62050]
 # nasb az rooye backup:
 #   sudo bash install-node.sh --restore /root/rathole-node-backup-....tar.gz
 set -euo pipefail
 
 RATHOLE_VERSION="${RATHOLE_VERSION:-v0.5.0}"
-SERVER="" NAME="" TOKEN="" INBOUND="" API_TOKEN="" API_INBOUND="" RESTORE=""
+SERVER="" TLS_HOSTNAME="" TLS_TRUSTED_ROOT="" NAME="" TOKEN="" INBOUND="" API_TOKEN="" API_INBOUND="" RESTORE=""
 
 log(){ printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[1;33m[*]\033[0m %s\n' "$*"; }
@@ -18,6 +19,8 @@ die(){ err "$*"; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --server)            SERVER="$2"; shift 2;;
+    --tls-hostname)      TLS_HOSTNAME="$2"; shift 2;;
+    --tls-trusted-root)  TLS_TRUSTED_ROOT="$2"; shift 2;;
     --name)              NAME="$2"; shift 2;;
     --token)             TOKEN="$2"; shift 2;;
     --inbound-port)      INBOUND="$2"; shift 2;;
@@ -33,6 +36,10 @@ done
 if [ -z "$RESTORE" ]; then
   [ -n "$SERVER" ] && [ -n "$NAME" ] && [ -n "$TOKEN" ] && [ -n "$INBOUND" ] || \
     die "argumenthaye lazem: --server --name --token --inbound-port  (ya --restore <file>)"
+  echo "$SERVER" | grep -qE '^[A-Za-z0-9_.-]+(:[0-9]{1,5})?$' || die "SERVER namotabar."
+  [ -z "$TLS_HOSTNAME" ] || echo "$TLS_HOSTNAME" | grep -qE '^[A-Za-z0-9_.-]+$' || die "TLS hostname namotabar."
+  [ -z "$TLS_TRUSTED_ROOT" ] || echo "$TLS_TRUSTED_ROOT" | grep -qE '^/[A-Za-z0-9_./-]{1,255}$' || die "TLS trusted root namotabar."
+  [ -z "$TLS_TRUSTED_ROOT" ] || [ -n "$TLS_HOSTNAME" ] || die "--tls-trusted-root be --tls-hostname niaz darad."
 else
   [ -f "$RESTORE" ] || die "file backup peyda nashod: $RESTORE"
 fi
@@ -50,7 +57,11 @@ if ! command -v rathole >/dev/null 2>&1; then
   apt-get update -y && apt-get install -y curl unzip tar ca-certificates
   tmp="$(mktemp -d)"
   url="https://github.com/rapiz1/rathole/releases/download/${RATHOLE_VERSION}/rathole-${RH_ARCH}.zip"
-  curl -fsSL "$url" -o "$tmp/rathole.zip" || die "download rathole shekast khord."
+  # --speed-limit/--speed-time (na --max-time): DPI-e Iran ettesal ra bargharar mikonad va baad
+  # jarian ra motevaghef → curl-e bedoon-e hadd TA ABAD montazer mimanad. in gard faghat transfer-e
+  # RAKED ra ghat mikonad va download-e kond-vali-dar-hal-pishraft ra nemikoshad.
+  curl -fsSL --connect-timeout 20 --speed-limit 1024 --speed-time 30 --retry 2 \
+       "$url" -o "$tmp/rathole.zip" || die "download rathole shekast khord (shabake/filtr?)."
   unzip -o "$tmp/rathole.zip" -d "$tmp" >/dev/null
   install -m 755 "$tmp/rathole" /usr/local/bin/rathole
   rm -rf "$tmp"
@@ -105,7 +116,12 @@ fi
 
 # ---------- nasb tazh ----------
 log "neveshtan /etc/rathole/node.env va services.conf..."
-{ echo "SERVER=${SERVER}"; echo "RATHOLE_VERSION=${RATHOLE_VERSION}"; } > /etc/rathole/node.env
+{
+  echo "SERVER=${SERVER}"
+  [ -n "$TLS_HOSTNAME" ] && echo "TLS_HOSTNAME=${TLS_HOSTNAME}"
+  [ -n "$TLS_TRUSTED_ROOT" ] && echo "TLS_TRUSTED_ROOT=${TLS_TRUSTED_ROOT}"
+  echo "RATHOLE_VERSION=${RATHOLE_VERSION}"
+} > /etc/rathole/node.env
 chmod 600 /etc/rathole/node.env
 {
   echo "${NAME}|${TOKEN}|${INBOUND}"
@@ -116,11 +132,14 @@ chmod 600 /etc/rathole/services.conf
 if command -v ratholenode >/dev/null 2>&1; then
   ratholenode apply
 else
-  HOST="${SERVER%%:*}"
+  HOST="${TLS_HOSTNAME:-${SERVER%%:*}}"
+  [ -z "$TLS_TRUSTED_ROOT" ] || [ -f "$TLS_TRUSTED_ROOT" ] || die "TLS trusted root peyda nashod: $TLS_TRUSTED_ROOT"
   {
     echo "[client]"; echo "remote_addr = \"${SERVER}\""; echo "retry_interval = 1"; echo "heartbeat_timeout = 40"; echo
     echo "[client.transport]"; echo "type = \"websocket\""; echo "[client.transport.websocket]"; echo "tls = true"
-    echo "[client.transport.tls]"; echo "hostname = \"${HOST}\""; echo
+    echo "[client.transport.tls]"; echo "hostname = \"${HOST}\""
+    [ -n "$TLS_TRUSTED_ROOT" ] && echo "trusted_root = \"${TLS_TRUSTED_ROOT}\""
+    echo
     echo "[client.services.${NAME}]"; echo "token = \"${TOKEN}\""; echo "local_addr = \"127.0.0.1:${INBOUND}\""; echo "type = \"tcp\""
     if [ -n "$API_TOKEN" ] && [ -n "$API_INBOUND" ]; then
       echo; echo "[client.services.${NAME}_api]"; echo "token = \"${API_TOKEN}\""; echo "local_addr = \"127.0.0.1:${API_INBOUND}\""; echo "type = \"tcp\""

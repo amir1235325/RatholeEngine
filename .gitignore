@@ -26,8 +26,13 @@ __pycache__/
 *.pyc
 *.tmp
 
+# ---- sandbox موقتِ تست‌ها (روی MINGW مسیر ویندوزی cygpath -w پاک‌سازی را می‌شکند) ----
+.test-adaptive.*/
+.harness-*/
+
 # ---- ابزارها و اسکرچ محلی (نباید در repo باشند) ----
 .claude/
+.workbuddy-ai/
 _finalize.py
 scratch_confirmed.txt
 opencode.json

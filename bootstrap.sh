@@ -43,7 +43,13 @@ TTY_DEV=""
 if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then TTY_DEV="/dev/tty"; fi
 is_tty(){ [ -t 0 ] || [ -n "$TTY_DEV" ]; }
 rdp(){ # read -rp ke ba stdin-e pipe ham kar mikonad: $1=prompt $2=nam-e motghayer
-  if [ -n "$TTY_DEV" ]; then IFS= read -rp "$1" "$2" < "$TTY_DEV"; else IFS= read -rp "$1" "$2"; fi
+  # MOHEM: agar NA stdin terminal bashad va NA /dev/tty baz shavad, HARGEZ az stdin nakhan —
+  # `read` rooye pipe-e baz ta abad montazer mimanad va prompt ham chap nemishavad (nasb bi-seda
+  # gir mikonad). timeout ham backstop-e terminal-e bi-morajea (screen-e detach-shode) ast.
+  local t="${RTH_READ_TIMEOUT:-300}"
+  if   [ -n "$TTY_DEV" ]; then IFS= read -rt "$t" -p "$1" "$2" < "$TTY_DEV"
+  elif [ -t 0 ];         then IFS= read -rt "$t" -p "$1" "$2"
+  else printf -v "$2" '%s' ""; fi
 }
 ask_yn(){ [ "$ASSUME_YES" -eq 1 ] && return 0; local a; rdp "$1 [Y/n]: " a; [[ -z "$a" || "$a" =~ ^[Yy]$ ]]; }
 

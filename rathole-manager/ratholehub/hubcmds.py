@@ -33,6 +33,8 @@ RE_CHAN    = re.compile(r"^(stable|beta)\Z")                                # ka
 RE_HEADER  = re.compile(r"^[A-Za-z0-9-]{1,40}\Z")   # naam-e header-e masiryabi-ye direct
 RE_BH_SRV  = re.compile(r"^(ws|wsmux)\Z")           # transport-e backhaul samt-e Iran (bedoon TLS)
 RE_BH_CLI  = re.compile(r"^(wss|wssmux)\Z")         # transport-e backhaul samt-e node (TLS be nginx:443)
+RE_BH_ANY  = re.compile(r"^(ws|wsmux|wss|wssmux)\Z") # node: TLS/443 ya direct-IP bedoon TLS
+RE_BH_MODE = re.compile(r"^(nginx_tls|direct_ip)\Z")
 RE_BH_TOK  = re.compile(r"^[A-Fa-f0-9]{16,64}\Z")   # token-e moshtarak-e backhaul (openssl rand -hex)
 # upstream-e reverse-proxy: DAGHIGHAN scheme://host:port — bedoon masir/query/metachar.
 # in meghdar mostaghim be conf-e nginx miravad، pas har chiz-e digar rad mishavad.
@@ -172,11 +174,14 @@ def build_iran_cmd(action, a):
         port      = str(a.get("port", "3080") or "3080")
         transport = a.get("transport", "wsmux") or "wsmux"
         profile   = a.get("profile", "balanced") or "balanced"
-        # transport-e server HATMAN bedoon-e TLS ast — TLS faghat rooye nginx terminate mishavad.
+        mode      = a.get("mode", "nginx_tls") or "nginx_tls"
+        # transport-e server HATMAN bedoon-e TLS ast; exposure moshakhas mikonad nginx ya public bind.
         if not RE_PORT.match(port):        return None
         if not RE_BH_SRV.match(transport): return None
         if not RE_PROFILE.match(profile):  return None
-        return ["ratholectl", "backhaul", "on", port, transport, profile]
+        if not RE_BH_MODE.match(mode):     return None
+        if mode == "direct_ip" and port == "443": return None
+        return ["ratholectl", "backhaul", "on", port, transport, profile, mode]
     if action in ("backhaul_node_on", "backhaul_node_off"):
         name = a.get("name", "")
         if not RE_NAME.match(name): return None
@@ -292,6 +297,7 @@ def build_node_cmd(action, a):
         if not RE_LINES.match(n): return None
         return _diag(["ratholenode", "logs", "all", n], 150)
     if action == "upstream_ls": return ["ratholenode", "upstream", "ls"]
+    if action == "status":      return ["ratholenode", "status", "--json"]
     if action == "kcp_status":  return ["ratholenode", "kcp", "status"]
     if action == "kcp_off":     return ["ratholenode", "kcp", "off"]
     if action == "plain_status": return ["ratholenode", "plain", "status"]
@@ -318,16 +324,20 @@ def build_node_cmd(action, a):
     if action == "backhaul_logs":   return ["ratholenode", "backhaul", "logs"]
     if action == "backhaul_off":    return ["ratholenode", "backhaul", "off"]
     if action == "backhaul_on":
-        domain    = a.get("domain", "")
+        mode      = a.get("mode", "nginx_tls") or "nginx_tls"
+        remote    = a.get("remote_addr", "") or a.get("domain", "")  # payload-e ghadimi
         token     = a.get("token", "")
         transport = a.get("transport", "wssmux") or "wssmux"
         profile   = a.get("profile", "balanced") or "balanced"
-        # transport-e client HATMAN TLS-dar ast (be nginx:443 mizanad).
-        if not RE_HOST.match(domain):      return None
-        if not RE_BH_TOK.match(token):     return None
-        if not RE_BH_CLI.match(transport): return None
-        if not RE_PROFILE.match(profile):  return None
-        return ["ratholenode", "backhaul", "on", domain, token, transport, profile]
+        if not RE_BH_MODE.match(mode):       return None
+        if not RE_BH_TOK.match(token):       return None
+        if not RE_BH_ANY.match(transport):   return None
+        if not RE_PROFILE.match(profile):    return None
+        if mode == "nginx_tls":
+            if not RE_HOST.match(remote) or not RE_BH_CLI.match(transport): return None
+        else:
+            if not RE_IPPORT.match(remote) or transport not in ("ws", "wsmux"): return None
+        return ["ratholenode", "backhaul", "on", remote, token, transport, profile]
     if action == "migrate":     return ["ratholenode", "migrate"]
 
     if action == "tune":        return ["ratholenode", "tune"]
@@ -397,10 +407,20 @@ def build_node_cmd(action, a):
     if action == "version":
         return ["ratholenode", "version"]
     if action == "set_server":
-        # tunnel-e asli (main) ra be yek server Iran vasl mikonad: host ya host:port
+        # sazgari ba UI/API ghadimi: faghat endpoint ra set kon.
         server = a.get("server", "")
         if not (RE_IPPORT.match(server) or RE_HOST.match(server)): return None
         return ["ratholenode", "set", "SERVER", server]
+    if action == "set_main":
+        # endpoint-e dial + SNI/cert hostname + public trust root atomik.
+        server = a.get("server", "")
+        hostname = a.get("tls_hostname", "") or ""
+        trusted_root = a.get("tls_trusted_root", "") or ""
+        if not (RE_IPPORT.match(server) or RE_HOST.match(server)): return None
+        if hostname and not RE_HOST.match(hostname): return None
+        if trusted_root and not RE_PATH.match(trusted_root): return None
+        if trusted_root and not hostname: return None
+        return ["ratholenode", "set-main", server, hostname, trusted_root] if trusted_root else (["ratholenode", "set-main", server, hostname] if hostname else ["ratholenode", "set-main", server])
     if action == "watchdog_on":
         iv = str(a.get("interval", "60") or "60")
         if not RE_PORT.match(iv): return None
@@ -466,7 +486,7 @@ WRITE_ACTIONS = {
 
     "backup", "enable", "regen_full", "regen",
     # node
-    "add_svc", "rm_svc", "kcp_on", "kcp_off", "apply", "restart", "set_server",
+    "add_svc", "rm_svc", "kcp_on", "kcp_off", "apply", "restart", "set_server", "set_main",
     "upstream_add", "upstream_add_svc", "upstream_rm", "upstream_rm_svc",
     "upstream_kcp_on", "upstream_kcp_off", "upstream_apply", "upstream_restart",
     "upstream_plain_on", "upstream_plain_off",

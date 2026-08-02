@@ -14,7 +14,16 @@ log(){ printf '%s %s\n' "$(c_g '[+]')" "$*"; }
 warn(){ printf '%s %s\n' "$(c_y '[*]')" "$*"; }
 err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
 die(){ err "$*"; exit 1; }
-ask_yn(){ [ "$YES" -eq 1 ] && return 0; local a; read -rp "$1 [y/N]: " a; [[ "$a" =~ ^[Yy]$ ]]; }
+# tty-safe + bounded: `read -rp` rooye stdin-e gheyr-terminal (curl|bash، SSH) ta abad montazer
+# mimanad va prompt ham chap nemishavad. bedoon-e tty javab «na» ast (pishfarz-e amn baraye hazf).
+ask_yn(){
+  [ "$YES" -eq 1 ] && return 0
+  local a="" t="${RTH_READ_TIMEOUT:-300}"
+  if [ -t 0 ]; then read -rt "$t" -p "$1 [y/N]: " a
+  elif { : < /dev/tty; } 2>/dev/null; then read -rt "$t" -p "$1 [y/N]: " a < /dev/tty
+  fi
+  [[ "$a" =~ ^[Yy]$ ]]
+}
 
 while [ $# -gt 0 ]; do case "$1" in
   --purge) PURGE=1; shift;;

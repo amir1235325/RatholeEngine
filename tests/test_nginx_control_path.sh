@@ -5,75 +5,100 @@ set -euo pipefail
 ok(){ echo "ok - $*"; }
 fail(){ echo "not ok - $*" >&2; exit 1; }
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+TEST_TMP_ROOT="${TEST_TMP_ROOT:-${TMPDIR:-/tmp}}"
 
 # ---- 1: ensure_control_path: masir jadid ya az state ----------------------------
 (
-  TMP_STATE="$(mktemp)"; TMP_DIR="$(mktemp -d)"; trap 'rm -f "$TMP_STATE"; rm -rf "$TMP_DIR"' EXIT
-  jq -n '{domain:"x.test",cert_fullchain:"/fc",cert_key:"/k",control_port:2333,
-          fake_port:8080,sub_port:2096,data_port_start:1001,api_port_start:7001,nodes:[]}' > "$TMP_STATE"
+  TMP_DIR="$(mktemp -d "${TEST_TMP_ROOT}/.test-nginx.XXXXXX")"; TMP_STATE="$TMP_DIR/state.json"; trap 'rm -rf "$TMP_DIR"' EXIT
+  printf '%s\n' '{"domain":"x.test","cert_fullchain":"/fc","cert_key":"/k","control_port":2333,"fake_port":8080,"sub_port":2096,"data_port_start":1001,"api_port_start":7001,"nodes":[]}' > "$TMP_STATE"
 
   export RATHOLECTL_LIB_ONLY=1
+  source "$REPO_ROOT/rathole-manager/ratholectl"
+  trap 'rm -rf "$TMP_DIR"' EXIT
   STATE="$TMP_STATE"
   NGINX_CONF="$TMP_DIR/rathole.conf"
-  source "$REPO_ROOT/rathole-manager/ratholectl"
 
-  p="$(ensure_control_path)"
+  ensure_control_path > "$TMP_DIR/path.out"
+  p="$(cat "$TMP_DIR/path.out")"
   echo "$p" | grep -qE '^/_rh/[0-9a-f]{32}$' || { echo "bad path: $p" >&2; exit 1; }
-  p2="$(ensure_control_path)"
+  ensure_control_path > "$TMP_DIR/path2.out"
+  p2="$(cat "$TMP_DIR/path2.out")"
   [ "$p" = "$p2" ] || { echo "path taghir kard: $p -> $p2" >&2; exit 1; }
   echo "ok - ensure_control_path masir-e motabar sakhte va cache kard: $p"
 )
 ok "ensure_control_path yek path-e /_rh/<hex32> sakhte va dar state cache kard"
 
-# ---- 2: barresi WS_PATH dar client.toml ------------------------------------------
+# ---- 2: Rathole v0.5.0 field-e websocket path nadarad -----------------------------
 (
   export RATHOLENODE_LIB_ONLY=1
   ROOT2="$(mktemp -d)"; trap 'rm -rf "$ROOT2"' EXIT
   source "$REPO_ROOT/rathole-manager/ratholenode"
+  trap 'rm -rf "$ROOT2"' EXIT
   ENV_FILE="$ROOT2/node.env"; SVC_FILE="$ROOT2/services.conf"; CLIENT_TOML="$ROOT2/client.toml"
   printf 'SERVER=panel.example:443\nWS_PATH=/_rh/aabbccddeeff00112233445566778899\n' > "$ENV_FILE"
   : > "$SVC_FILE"
   gen_client
-  grep -q 'path = "/_rh/aabbccddeeff00112233445566778899"' "$CLIENT_TOML" || {
-    echo "WS path dar TOML peyda nashod:" >&2; cat "$CLIENT_TOML" >&2; exit 1
+  ! grep -q '^path = ' "$CLIENT_TOML" || {
+    echo "field-e unsupported-e path dar TOML peyda shod:" >&2; cat "$CLIENT_TOML" >&2; exit 1
   }
 )
-ok "WS_PATH dar client.toml be sorat-e path = \"..\" sabt shod"
+ok "WS_PATH-e ghadimi be TOML-e strict-e Rathole v0.5.0 tazrigh nemishavad"
 
-# ---- 3: barresi nginx config — location = /_rh/<secret> va root_backend-e fake ---
+# ---- 3: generated nginx — domain + IP-SAN default cert ---------------------------
 (
-  TMP_STATE="$(mktemp)"; TMP_DIR="$(mktemp -d)"; trap 'rm -f "$TMP_STATE"; rm -rf "$TMP_DIR"' EXIT
-  jq -n '{domain:"x.test",cert_fullchain:"/fc",cert_key:"/k",control_port:2333,
-          control_path:"/_rh/deadbeefdeadbeef0011223344556677",
-          fake_port:8080,sub_port:2096,data_port_start:1001,api_port_start:7001,nodes:[]}' > "$TMP_STATE"
-
+  TMP_DIR="$(mktemp -d "${TEST_TMP_ROOT%/}/test-nginx.XXXXXX")"; trap 'rm -rf "$TMP_DIR"' EXIT
   export RATHOLECTL_LIB_ONLY=1
-  STATE="$TMP_STATE"
-  NGINX_CONF="$TMP_DIR/rathole.conf"
   source "$REPO_ROOT/rathole-manager/ratholectl"
+  trap 'rm -rf "$TMP_DIR"' EXIT
 
-  # gen_nginx_conf niyaz be cert-haye vaghei darad; maa khoruji ra az echo-e direct-e nginx block check mikonim
-  # be jaye gen_nginx_conf, function-haye gen-related ra call mikonim (bedoon root/nginx)
-  # check 1: root_backend map nabayad 'websocket ctrl' daشته bashad
-  out="$TMP_DIR/nginx.conf"
-  {
-    echo "map \$http_upgrade \$root_backend {"
-    echo "    default      8080;"
-    echo "}"
-  } > "$out"
-  # fake: tanha check mikonim ke root_backend-e ctrl dar nginx nist
-  # in assertion az gen_nginx_conf output-e real ast (agar cert-ha vojood dashtand)
-  # baraye sandoz: az grep roye source code check mikonim
-  grep -n 'websocket.*ctrl\|ctrl.*websocket' "$REPO_ROOT/rathole-manager/ratholectl" | \
-    grep -v '#\|ensure_control_path\|location.*ctrl_path' && {
-      echo "hanooz 'websocket ctrl' dar nginx vujood darad — bayad hazf shavad" >&2; exit 1
-    } || true
-  # check 2: location = /_rh/ dar source code mojood ast
-  grep -q 'location = \${ctrl_path}' "$REPO_ROOT/rathole-manager/ratholectl" || {
-    echo "location = \${ctrl_path} dar ratholectl peyda nashod" >&2; exit 1
-  }
+  STATE="$TMP_DIR/state.json"
+  NGINX_CONF="$TMP_DIR/rathole.conf"
+  STREAM_CONF="$TMP_DIR/stream/rathole-stream.conf"
+  fc="$TMP_DIR/domain.crt"; key="$TMP_DIR/domain.key"
+  ipfc="$TMP_DIR/ip.crt"; ipkey="$TMP_DIR/ip.key"
+  : > "$fc"; : > "$key"; : > "$ipfc"; : > "$ipkey"
+  jq -n --arg fc "$fc" --arg key "$key" --arg ifc "$ipfc" --arg ikey "$ipkey" \
+    '{domain:"x.test",cert_fullchain:$fc,cert_key:$key,control_port:2333,
+      control_path:"/_rh/deadbeefdeadbeef0011223344556677",fake_port:8080,sub_port:2096,
+      data_port_start:1001,api_port_start:7001,nodes:[],
+      ip_tls:{ip:"1.2.3.4",fullchain:$ifc,key:$ikey,self_signed:true}}' > "$STATE"
+  gen_nginx_conf
+
+  [ "$(grep -c 'listen 443 ssl http2 default_server;' "$NGINX_CONF")" -eq 1 ] || fail "IP TLS default_server-e yagane nist"
+  grep -qF "ssl_certificate     $ipfc;" "$NGINX_CONF" || fail "cert-e IP dar block-e default nist"
+  grep -qF "server_name x.test;" "$NGINX_CONF" || fail "domain-e asli az config hazf shode"
+  grep -qF "ssl_certificate     $fc;" "$NGINX_CONF" || fail "cert-e omoomi-ye domain hefz nashode"
+  [ "$(grep -c 'location = /_rh/deadbeefdeadbeef0011223344556677' "$NGINX_CONF")" -eq 2 ] || fail "control path dar har do vhost nist"
 )
-ok "nginx config location = \${ctrl_path} darad va root_backend dige websocket ra be ctrl nemiferestad"
+ok "nginx-e generated cert-e IP ra default va cert-e domain ra SNI-specific negah midarad"
+
+# ---- 4: game/SNI — 443 stream default -> internal IP TLS -------------------------
+(
+  TMP_DIR="$(mktemp -d "${TEST_TMP_ROOT%/}/test-nginx.XXXXXX")"; trap 'rm -rf "$TMP_DIR"' EXIT
+  export RATHOLECTL_LIB_ONLY=1
+  source "$REPO_ROOT/rathole-manager/ratholectl"
+  trap 'rm -rf "$TMP_DIR"' EXIT
+
+  STATE="$TMP_DIR/state.json"
+  NGINX_CONF="$TMP_DIR/rathole.conf"
+  STREAM_CONF="$TMP_DIR/stream/rathole-stream.conf"
+  fc="$TMP_DIR/domain.crt"; key="$TMP_DIR/domain.key"
+  ipfc="$TMP_DIR/ip.crt"; ipkey="$TMP_DIR/ip.key"
+  : > "$fc"; : > "$key"; : > "$ipfc"; : > "$ipkey"
+  ensure_stream_include(){ :; }
+  jq -n --arg fc "$fc" --arg key "$key" --arg ifc "$ipfc" --arg ikey "$ipkey" \
+    '{domain:"x.test",cert_fullchain:$fc,cert_key:$key,control_port:2333,
+      control_path:"/_rh/deadbeefdeadbeef0011223344556677",fake_port:8080,sub_port:2096,
+      internal_port:8443,data_port_start:1001,api_port_start:7001,
+      nodes:[{name:"game",port:1001,inbound_port:443,token:"t",sni:"game.test"}],
+      ip_tls:{ip:"1.2.3.4",fullchain:$ifc,key:$ikey,self_signed:true}}' > "$STATE"
+  gen_nginx_conf
+
+  grep -qF 'listen 127.0.0.1:8443 ssl default_server;' "$NGINX_CONF" || fail "IP TLS default-e listener-e dakhli nist"
+  grep -qF 'default   127.0.0.1:8443;' "$STREAM_CONF" || fail "stream default be listener-e dakhli nemiravad"
+  grep -qF 'game.test                    127.0.0.1:1001;' "$STREAM_CONF" || fail "SNI-e game be node route nashode"
+)
+ok "game/SNI: 443 stream, bare-IP ra be IP-cert-e dakhli va SNI-e game ra be node mifrestad"
 
 echo "---"
-echo "hameye task-4 assertion-ha PASS shod"
+echo "hameye nginx/control-path assertion-ha PASS shod"
