@@ -318,6 +318,16 @@ apply_update(){
     rm -f /usr/local/bin/common.sh
   fi
 
+  # core-e backhaul-e patch-shode (uTLS). binary-e backhaul-e nasb-shode az ghabl ba
+  # 'install_backhaul' avaz NEMISHAVAD (mesl-e binary-e rathole ke amdan az update mostasna ast)؛
+  # in faghat manba ra berooz mikonad ta nasb-e badi az core-e jadid estefade konad.
+  if [ -f "$SCRIPT_DIR/core-backhaul/SHA256SUMS" ]; then
+    mkdir -p /usr/local/share/rathole
+    cp -rf "$SCRIPT_DIR/core-backhaul" /usr/local/share/rathole/
+    chmod +x /usr/local/share/rathole/core-backhaul/*/backhaul 2>/dev/null || true
+    log "core-e backhaul (uTLS) berooz shod."
+  fi
+
   # beroozresani abzarhaye CLI
   local t
   for t in ratholectl ratholenode; do

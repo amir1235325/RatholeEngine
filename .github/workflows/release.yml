@@ -50,11 +50,39 @@ jobs:
           path: /tmp/core-out/rathole
           if-no-files-found: error
 
+  # ---------- marhaleh 1b: core-e backhaul (Go) ba uTLS ----------
+  # cross-build-e Go static ast (CGO_ENABLED=0)، pas har do target roo-ye YEK runner sakhte
+  # mishavand — bar-khalaf-e core-e Rust ke be runner-e arm-e joda niaz darad.
+  build-core-backhaul:
+    name: build backhaul core (uTLS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build patched backhaul cores
+        run: |
+          for t in linux-amd64 linux-arm64; do
+            bash core-backhaul/build.sh "$t" "/tmp/bh-core/$t"
+          done
+
+      - name: Upload backhaul core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-backhaul
+          path: /tmp/bh-core/
+          if-no-files-found: error
+
   # ---------- marhaleh 2: package va publish release ----------
   build-release:
     name: package and release
     runs-on: ubuntu-latest
-    needs: build-core
+    needs: [build-core, build-core-backhaul]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,18 +102,31 @@ jobs:
           name: core-aarch64-unknown-linux-gnu
           path: rathole-manager/core/aarch64-unknown-linux-gnu/
 
+      - name: Download backhaul core (uTLS)
+        uses: actions/download-artifact@v4
+        with:
+          name: core-backhaul
+          path: rathole-manager/core-backhaul/
+
       - name: Make binaries executable
-        run: chmod +x rathole-manager/core/*/rathole
+        run: |
+          chmod +x rathole-manager/core/*/rathole
+          chmod +x rathole-manager/core-backhaul/*/backhaul
 
       - name: Generate SHA256SUMS
         run: |
           cd rathole-manager/core
           sha256sum x86_64-unknown-linux-gnu/rathole aarch64-unknown-linux-gnu/rathole > SHA256SUMS
           cat SHA256SUMS
+          cd "$GITHUB_WORKSPACE/rathole-manager/core-backhaul"
+          sha256sum linux-amd64/backhaul linux-arm64/backhaul > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Verify checksums
         run: |
           cd rathole-manager/core
+          sha256sum -c SHA256SUMS --strict
+          cd "$GITHUB_WORKSPACE/rathole-manager/core-backhaul"
           sha256sum -c SHA256SUMS --strict
 
       - name: Build bundle (package.sh)

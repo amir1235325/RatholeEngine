@@ -79,3 +79,6 @@ jobs:
 
       - name: verify pinned core patches
         run: bash tests/test_core_patch.sh
+
+      - name: verify pinned backhaul core patch (uTLS)
+        run: bash tests/test_core_backhaul_patch.sh

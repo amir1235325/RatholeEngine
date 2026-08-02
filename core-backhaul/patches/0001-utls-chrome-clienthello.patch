@@ -1,0 +1,111 @@
+diff --git a/internal/client/transport/shared.go b/internal/client/transport/shared.go
+index f64d069..e8f08f3 100644
+--- a/internal/client/transport/shared.go
++++ b/internal/client/transport/shared.go
+@@ -2,7 +2,6 @@ package transport
+ 
+ import (
+ 	"context"
+-	"crypto/tls"
+ 	"fmt"
+ 	"net"
+ 	"net/http"
+@@ -281,21 +280,17 @@ func attemptDialWebSocket(ctx context.Context, addr string, edgeIP string, path
+ 	} else if mode == config.WSS || mode == config.WSSMUX {
+ 		wsURL = fmt.Sprintf("wss://%s%s", addr, path)
+ 
+-		// Create a TLS configuration that allows insecure connections
+-		tlsConfig := &tls.Config{
+-			InsecureSkipVerify: true, // Skip server certificate verification
+-		}
+-
+ 		dialer = websocket.Dialer{
+ 			EnableCompression: true,
+-			TLSClientConfig:   tlsConfig,        // Pass the insecure TLS config here
+ 			HandshakeTimeout:  45 * time.Second, // default handshake timeout
+-			NetDial: func(_, addr string) (net.Conn, error) {
++			// RatholeEngine: TLS ra khodemAn ba uTLS (ClientHello-ye Chrome) mizanim.
++			// gorilla vaghti NetDialTLSContext set bashad khodesh TLS nemizanad.
++			NetDialTLSContext: func(hctx context.Context, _, addr string) (net.Conn, error) {
+ 				conn, err := TcpDialer(ctx, edgeIP, timeout, keepalive, nodelay, 1, SO_RCVBUF, SO_SNDBUF)
+ 				if err != nil {
+ 					return nil, err
+ 				}
+-				return conn, nil
++				return uTLSHandshake(hctx, conn, addr)
+ 			},
+ 		}
+ 	}
+diff --git a/internal/client/transport/utls.go b/internal/client/transport/utls.go
+new file mode 100644
+index 0000000..f9194bf
+--- /dev/null
++++ b/internal/client/transport/utls.go
+@@ -0,0 +1,67 @@
++package transport
++
++import (
++	"context"
++	"fmt"
++	"net"
++	"os"
++
++	utls "github.com/refraction-networking/utls"
++)
++
++// uTLSHandshake yek conn-e TCP-e bargharar-shode ra ba ClientHello-ye Chrome mizanad.
++//
++// CHERA: crypto/tls-e Go yek asar-angosht-e (JA3/JA4) mokhtas-e khodesh darad — DPI mitavanad
++// az roo-ye haman «in yek client-e Go ast، na morurgar» ra tashkhis dahad، hatta vaghti hedar-haye
++// HTTP (User-Agent va ...) kamelan tabiei bashand. uTLS ClientHello-ye vaghei-ye Chrome ra baztolid mikonad.
++//
++// gvahi verify NEMISHAVAD — daghighan haman raftar-e upstream (InsecureSkipVerify): tunnel ba
++// token ehraz-e hoviat mishavad، na ba PKI.
++//
++// SNI: agar BACKHAUL_TLS_SNI set bashad haman estefade mishavad (baraye camouflage roo-ye IP-e
++// khali، ke vagarna SNI khali mimanad va yek Chrome-e bedoon-e SNI khodesh gheyr-adi ast).
++func uTLSHandshake(ctx context.Context, conn net.Conn, addr string) (net.Conn, error) {
++	sni := os.Getenv("BACKHAUL_TLS_SNI")
++	if sni == "" {
++		host, _, err := net.SplitHostPort(addr)
++		if err != nil {
++			host = addr
++		}
++		// SNI-e IP-e kham mojaz nist (RFC 6066) — khali migozarim، mesl-e crypto/tls.
++		if host != "" && net.ParseIP(host) == nil {
++			sni = host
++		}
++	}
++
++	uconn := utls.UClient(conn, &utls.Config{
++		ServerName:         sni,
++		InsecureSkipVerify: true,
++	}, utls.HelloChrome_Auto)
++
++	// ALPN bayad FAGHAT http/1.1 bashad. profile-e Chrome «h2» ham elam mikonad va an vaght
++	// server (che backhaul-e direct che nginx) HTTP/2 mozakere mikonad — vali WebSocket-e ma
++	// HTTP/1.1-e Upgrade ast، pas handshake mishkanad ("bogus greeting"/"malformed HTTP
++	// response"). extension ra baad az BuildHandshakeState mostaghim eslah mikonim ta be
++	// raftar-e config-e uTLS vabaste nabashim.
++	// hazine: Chrome-e vaghei h2 elam mikonad، pas in yek enheraf-e kuchak az asar-angosht-e
++	// vaghei ast — vali hanooz besiar nazdik-tar az ClientHello-ye Go-ye khali.
++	if err := uconn.BuildHandshakeState(); err != nil {
++		conn.Close()
++		return nil, fmt.Errorf("utls build: %w", err)
++	}
++	for _, ext := range uconn.Extensions {
++		if alpn, ok := ext.(*utls.ALPNExtension); ok {
++			alpn.AlpnProtocols = []string{"http/1.1"}
++		}
++	}
++	if err := uconn.BuildHandshakeState(); err != nil {
++		conn.Close()
++		return nil, fmt.Errorf("utls rebuild: %w", err)
++	}
++
++	if err := uconn.HandshakeContext(ctx); err != nil {
++		conn.Close()
++		return nil, fmt.Errorf("utls handshake: %w", err)
++	}
++	return uconn, nil
++}

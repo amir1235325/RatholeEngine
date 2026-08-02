@@ -26,6 +26,22 @@ elif [ "$CORE_OK" -eq 0 ]; then
   echo "[*] core binary-ha dar bundle nistnd (baraye release az RATHOLE_REQUIRE_CORE=1 estefade kon)."
 fi
 
+# core-e backhaul (Go + uTLS) — hamin ghaede. agar bashad، nasb dige be download-e GitHub
+# (Musixal/Backhaul) niaz nadarad، ke az dakhel-e Iran yek noghte-ye shekast-e kamtar ast.
+BH_CORE_OK=0
+if [ -f "$SRC/core-backhaul/SHA256SUMS" ] && \
+   [ -f "$SRC/core-backhaul/linux-amd64/backhaul" ] && \
+   [ -f "$SRC/core-backhaul/linux-arm64/backhaul" ]; then
+  BH_CORE_OK=1
+fi
+if [ "$RATHOLE_REQUIRE_CORE" = "1" ] && [ "$BH_CORE_OK" -eq 0 ]; then
+  echo "[!] RATHOLE_REQUIRE_CORE=1 vali core-e backhaul dar rathole-manager/core-backhaul/ peyda nashod."
+  echo "    avval core-backhaul/build.sh ra ejra kon ya az workflow artifact download kon."
+  exit 1
+elif [ "$BH_CORE_OK" -eq 0 ]; then
+  echo "[*] core-e backhaul dar bundle nist (nasb be download-e upstream fallback mikonad)."
+fi
+
 # pvshh-ye mstndat (docs/) ham dar baste gonjande mishavad agar vojood dashte bashad.
 DOCS="docs"
 PACK=("$SRC")

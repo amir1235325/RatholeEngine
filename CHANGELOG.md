@@ -10,6 +10,26 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 ## [Unreleased]
 
 ### Added
+- **core-e backhaul-e khodemAn ba asar-angosht-e TLS-e Chrome (uTLS):** backhaul-e upstream az
+  `crypto/tls`-e Go estefade mikonad ke JA3/JA4-e mokhtas-e khodesh darad — DPI mitavanad
+  «client-e Go» ra az morurgar tafkik konad، **hatta ba inke upstream az ghabl User-Agent-e
+  morurgar mifrestad** (yek list-e 29-taii ke tasadofi entekhab mishavad). pas patch-e ma
+  faghat laye-ye TLS ra avaz mikonad، na hedar-ha.
+  - `core-backhaul/` (hamsan-e `core/`-e rathole): `upstream.env` (rev-e PIN-shode = v0.6.5)،
+    `patches/0001-utls-chrome-clienthello.patch`، `build.sh` (cross-build-e static ba
+    `CGO_ENABLED=0` baraye linux-amd64/arm64).
+  - **ALPN amdan be `http/1.1` mahdood shode:** profile-e Chrome `h2` ham elam mikonad va an
+    vaght server (che backhaul-e direct che nginx) HTTP/2 mozakere mikonad va WebSocket-e
+    HTTP/1.1-e Upgrade mishkanad. in dar test-e e2e-ye vaghei kashf shod.
+  - `install_backhaul` hala core-e mahalli ra **TARJIH** midahad (ba barresi-ye SHA256) va faghat
+    agar naboud be download-e upstream fallback mikonad — yek download-e GitHub kamtar dar
+    masir-e nasb، ke az dakhel-e Iran yek noghte-ye shekast-e kamtar ast.
+    ba `RATHOLE_NO_CORE_BACKHAUL=1` mitavan in masir ra rad kard.
+  - tayid-e amali (moghayese-ye ClientHello-ye vaghei، stock dar barabar-e patched): tedad-e
+    cipher 13 → 16، aval-e list `0xBABA` va aval-e curve-ha `0xCACA` (**GREASE** — emza-ye
+    Chrome/BoringSSL) — ya'ni asar-angosht VAGHEAN avaz shode، na faghat ketabkhane.
+  - test: `tests/test_core_backhaul_patch.sh` (ghar-dad-e patch rooye rev-e PIN-shode).
+
 - **backhaul-e direct-IP hala TLS-e self-signed darad:** `ratholectl backhaul on <port> wssmux <profile> direct_ip`
   — khod-e backhaul TLS ra terminate mikonad (nginx dar masir nist) va `tls_cert`/`tls_key` az
   haman gvahi-ye `ratholectl ip-cert <IPv4>` khande mishavad (yek anbar-e gvahi، na do ta).

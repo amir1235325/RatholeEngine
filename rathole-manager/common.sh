@@ -170,11 +170,34 @@ backhaul_client_transport(){
 
 # nasb backhaul (server|client). binary-e Go tak-fail ast; role faghat dar esm-e khoruji tafavot darad.
 # ba halqe-ye mirror ta az dakhel Iran (filtr/thrim github) ham javab begirad — haman elgo-ye install-panel.
+# binary-e patch-shode-ye ma (uTLS ClientHello-ye Chrome) agar kenar-e script-ha bashad.
+# masir hamsan-e core-e rathole: <SHARE>/core-backhaul/<target>/backhaul + SHA256SUMS.
+# bargasht: 0 agar nasb shod. RATHOLE_NO_CORE_BACKHAUL=1 in masir ra rad mikonad.
+install_backhaul_core(){
+  local role="$1" bin="/usr/local/bin/backhaul-$2" d target
+  [ "${RATHOLE_NO_CORE_BACKHAUL:-0}" = 1 ] && return 1
+  case "$(uname -m)" in x86_64) target=linux-amd64 ;; aarch64) target=linux-arm64 ;; *) return 1 ;; esac
+  for d in "${RATHOLE_CORE_BACKHAUL_DIR:-}" /usr/local/share/rathole/core-backhaul \
+           "${BASH_SOURCE[0]%/*}/core-backhaul"; do
+    [ -n "$d" ] && [ -f "$d/$target/backhaul" ] && [ -f "$d/SHA256SUMS" ] || continue
+    ( cd "$d" && sha256sum -c SHA256SUMS --ignore-missing --quiet ) 2>/dev/null || {
+      err "checksum-e core-e backhaul motabar nist ($d) — rad shod."; continue; }
+    install -m755 "$d/$target/backhaul" "$bin" || continue
+    log "backhaul-$2 az core-e patch-shode nasb shod (uTLS): $bin"
+    return 0
+  done
+  return 1
+}
+
 install_backhaul(){
   local role="$1" bin="/usr/local/bin/backhaul-$1" ver="${BACKHAUL_VER:-v0.6.5}" arch tmp ok=0 m
   [ -x "$bin" ] && return 0
+  # tarjih: core-e patch-shode-ye mahalli (ham asar-angosht-e behtar، ham BEDOON-e download az
+  # GitHub ke az dakhel-e Iran nogte-ye shekast ast). agar naboud، upstream download mishavad.
+  install_backhaul_core "$role" "$role" && return 0
   case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) die "memari poshtibani nemishavad." ;; esac
   command -v curl >/dev/null 2>&1 || die "curl lazem ast."
+  warn "core-e patch-shode peyda nashod؛ backhaul-e upstream download mishavad (bedoon-e uTLS)."
   log "download backhaul ${ver} ($role)..."
   tmp="$(mktemp -d)"
   for m in "" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/"; do

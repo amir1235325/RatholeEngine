@@ -221,6 +221,14 @@ mkdir -p /etc/rathole /etc/rathole-manager /usr/local/share/rathole
 [ -f "$SCRIPT_DIR/ratholectl" ] || die "ratholectl knar in askript peyda nashod."
 install -m 755 "$SCRIPT_DIR/ratholectl" /usr/local/bin/ratholectl
 [ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; rm -f /usr/local/bin/common.sh; log "common.sh nasb shod."; }
+# core-e backhaul-e patch-shode (uTLS) agar dar baste bashad — install_backhaul an ra tarjih
+# midahad va dige be download az GitHub niaz nist.
+if [ -f "$SCRIPT_DIR/core-backhaul/SHA256SUMS" ]; then
+  mkdir -p /usr/local/share/rathole
+  cp -rf "$SCRIPT_DIR/core-backhaul" /usr/local/share/rathole/
+  chmod +x /usr/local/share/rathole/core-backhaul/*/backhaul 2>/dev/null || true
+  log "core-e backhaul (uTLS) nasb shod: /usr/local/share/rathole/core-backhaul"
+fi
 log "ratholectl dar /usr/local/bin nasb shod."
 
 # ---------- systemd ----------

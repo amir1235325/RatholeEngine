@@ -79,6 +79,13 @@ mkdir -p /etc/rathole
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$SCRIPT_DIR/ratholenode" ] && { install -m 755 "$SCRIPT_DIR/ratholenode" /usr/local/bin/ratholenode; log "ratholenode nasb shod."; } || warn "ratholenode knar askript nist."
 [ -f "$SCRIPT_DIR/common.sh" ] && { mkdir -p /usr/local/share/rathole; install -m 644 "$SCRIPT_DIR/common.sh" /usr/local/share/rathole/common.sh; rm -f /usr/local/bin/common.sh; log "common.sh nasb shod."; }
+# core-e backhaul-e patch-shode (uTLS) — bebin tozih dar install-panel.sh
+if [ -f "$SCRIPT_DIR/core-backhaul/SHA256SUMS" ]; then
+  mkdir -p /usr/local/share/rathole
+  cp -rf "$SCRIPT_DIR/core-backhaul" /usr/local/share/rathole/
+  chmod +x /usr/local/share/rathole/core-backhaul/*/backhaul 2>/dev/null || true
+  log "core-e backhaul (uTLS) nasb shod."
+fi
 
 # ---------- service systemd (tunnel asli) ----------
 log "nasb service systemd..."
