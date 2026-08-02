@@ -30,6 +30,9 @@ fi
 DOCS="docs"
 PACK=("$SRC")
 [ -d "$DOCS" ] && PACK+=("$DOCS")
+# LICENSE/NOTICE bayad HAMRAH-e har noskhe-ye tozi-shode beravand — AGPL in ra elzam mikonad
+# (va baraye MIT ham lazem bood). bedoon-e in, baste-ye release naghes-e mojavez ast.
+for L in LICENSE NOTICE; do [ -f "$L" ] && PACK+=("$L"); done
 
 echo "[+] normal-sazi khate-payan (LF) rooye askriptha va mstndat..."
 find "${PACK[@]}" -type f \( -name '*.sh' -o -name '*.md' -o -name 'common.sh' -o -name 'ratholectl' -o -name 'ratholenode' \) \

@@ -1,0 +1,49 @@
+RatholeEngine
+Copyright (C) 2026 loopy-iri and RatholeEngine contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+The full license text is in the LICENSE file.
+
+
+Licensing history
+-----------------
+
+Releases up to and including v1.7.0 (2026-08-02) were published under the MIT
+License.  Those releases remain available under MIT; the MIT grant already given
+is perpetual and is not revoked by this change.  Starting after v1.7.0 the
+project is licensed under AGPL-3.0-or-later.
+
+Contributions made while the project was under MIT are incorporated here under
+the terms of the MIT License, which permits their inclusion in an AGPL-licensed
+combined work.  Their original MIT notice is preserved by this file.
+
+Practical consequence of AGPL section 13: if you modify RatholeEngine and let
+other people interact with your modified version over a network (for example by
+running the `ratholehub` web panel for others), you must offer those users the
+source of your modified version.
+
+
+Third-party components
+----------------------
+
+RatholeEngine downloads and drives several third-party programs at install time.
+They are separate works, are not part of this program, and remain under their own
+licenses held by their own authors:
+
+  - rathole            https://github.com/rapiz1/rathole
+  - Backhaul           https://github.com/Musixal/Backhaul
+  - kcptun             https://github.com/xtaci/kcptun
+  - nginx, jq, certbot, openssl (distribution packages)
+
+Consult each project for its license terms before redistributing its binaries.
