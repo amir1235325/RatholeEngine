@@ -9,6 +9,48 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-08-07
+
+### Fixed
+- **ghofl-e state hengam-e entezar baraye tayp-e karbar negah dashte mishod (regression az
+  v1.6.3).** `menu` — ke dastoor-e PISHFARZ-e `ratholectl` ast — yek halghe-ye taamoli-ye
+  bi-payan ast، va `init` ham montazer-e javab mimanad؛ har do KAMEL zir-e `rth_with_lock`
+  ejra mishodand. yaani ta vaghti menu baz bood، ghofl-e sarasari dast-e haman process mimand.
+  natije do chiz bood va dovomi jedi-tar ast:
+  1. har `ratholectl`-e digar (masalan action-e hub rooye SSH) 30 sanie gir mikard؛
+  2. baad az an timeout **BI-GHOFL** edame midad — pas haman mohafezat-e lost-update/TOCTOU ke
+     ghofl barash sakhte shode bood dor mikhord.
+  hala `rth_read` ghabl az `read` ghofl ra azad mikonad va baad az gereftan-e javab dobare
+  migirad، pas charkhe-ye read-modify-write-e mutator-ha hamchenan KAMEL zir-e ghofl ast va
+  faghat entezar-e bi-kar baraye ensan biroon-e ghofl raft. yek-ja dar `rth_read` hal shod —
+  har 25 prompt az haman rah rad mishavad، na 25 patch-e joda.
+  `ratholectl` faghat yek flag (`RTH_LOCK_HELD`) set mikonad va do helper dar `common.sh`
+  hastand، pas agar dar update noskhe-ha ghati shavand be raftar-e ghadim barmigardad (khata
+  nemidahad).
+  test: `tests/test_lock_prompt.sh` — ba yek control case ke amdan bedoon-e fix ejra mishavad
+  ta sabet konad test vaghean chizi ra misanjad (ghadim 3s gir mikonad، jadid 0s).
+
+## [1.8.2] - 2026-08-07
+
+### Added
+- **nasb-e yek noskhe-ye khas-e release ba flag.** ghablan pin-e noskhe faghat env-e
+  `RATHOLE_RELEASE` bood ke dar dastoor-e mostanad-shode ghabl-e estefade nist: dar
+  `RATHOLE_RELEASE=v1.7.0 curl ... | sudo bash` an var be `curl` michasbad na be bash-e
+  sudo-shode، va `env_reset`-e sudo ham an ra hazf mikonad. hala `install.sh` flag-e
+  `--release <tag|latest|beta>` darad (+ shekl-e `--release=`)، va agar chizi nadade bashi
+  be soorat-e taamoli mipors ad. tag etebar-sanji mishavad chon dar URL minshinad.
+  pin be bootstrap forward mishavad ta `--update` ham roo haman noskhe bemanad.
+  `ratholectl update <tag>` / `ratholenode update <tag>` ham tag migirand.
+  test: `tests/test_release_pin.sh`.
+
+### Fixed
+- **nasb baad az entekhab-e gozine BI-SEDA gir mikard.** do ellat dasht: (1) dar
+  `rth_with_lock`، `exec 9>"$RTH_LOCK" 2>/dev/null` bedoon-e group، redirect-e stderr ra
+  DAEMI mikard — pas hameye payam-haye `err`/`die` ta akhar-e process gom mishodand va karbar
+  faghat «init shekast khord» ra midid؛ (2) tty be `ratholectl init` forward nemishod، pas
+  prompt-e domain zir-e `curl | bash` javab nemigereft.
+  test: `tests/test_stderr_visible.sh`، `tests/test_tty_prompt.sh`، `tests/test_init_interactive.sh`.
+
 ## [1.8.1] - 2026-08-02
 
 ### Fixed
