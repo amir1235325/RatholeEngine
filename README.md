@@ -90,7 +90,15 @@ curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/instal
   --server panel.example.ir:443 --name trk01 --token <T> --inbound-port 2087
 ```
 
-> `install.sh` fetches `rathole-manager.zip` + `bootstrap.sh` from the latest GitHub Release (published by the release workflow), then hands off to `bootstrap.sh`. Override the source repo with `RATHOLE_GH="you/repo"` or pin a version with `RATHOLE_RELEASE="v1.2.3"`.
+> `install.sh` fetches `rathole-manager.zip` + `bootstrap.sh` from the latest GitHub Release (published by the release workflow), then hands off to `bootstrap.sh`. Override the source repo with `RATHOLE_GH="you/repo"`.
+
+Install a **specific released version** with `--release` (run with no arguments and it asks; Enter = latest):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo bash -s -- --release v1.8.0 --panel --domain panel.example.ir --fullchain /path/fullchain.pem --key /path/privkey.pem
+```
+
+`--beta` takes the newest pre-release, `--stable` the newest stable. From an installed server: `ratholectl update v1.8.0` / `ratholenode update v1.8.0`. Note `RATHOLE_RELEASE=... curl ... | sudo bash` does **not** work — the variable goes to `curl` and `sudo` strips it; use the flag.
 
 Offline / local bundle (no download) still works via `bootstrap.sh` directly — see [`docs/README.fa.md`](docs/README.fa.md).
 

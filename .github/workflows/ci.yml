@@ -52,6 +52,18 @@ jobs:
         run: |
           bash tests/test_tty_prompt.sh
 
+      - name: error messages must reach the user (stderr not swallowed)
+        run: |
+          bash tests/test_stderr_visible.sh
+
+      - name: interactive panel init must be able to ask for the domain
+        run: |
+          bash tests/test_init_interactive.sh
+
+      - name: installing a specific released version must work (--release)
+        run: |
+          bash tests/test_release_pin.sh
+
       - name: nginx control-path + IP-TLS vhost tests
         run: |
           bash tests/test_nginx_control_path.sh

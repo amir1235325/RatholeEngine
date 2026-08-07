@@ -317,7 +317,16 @@ log "nasb sthsistm tmam shod. hala tanzimat avlih (init)..."
 if [ -f /etc/rathole-manager/state.json ]; then
   warn "state.json az ghabl vojood dard; az init rad mishvim. baraye taghir: ratholectl init ..."
 else
-  /usr/local/bin/ratholectl init "${INIT_ARGS[@]}" || die "init shekast khord."
+  # MOHEM: ratholectl yek process-e JODAst va tty ra AZ NO tashkhis midahad. zir-e `curl|bash`
+  # stdin-e ma pipe ast، pas agar hamin ja an ra be TTY_DEV vasl nakonim، `init`-e taamoli
+  # hich rahi baraye porsidan nadarad va ba «bedoon-e domain momken nist» mimirad — hatta
+  # vaghti karbar VAGHEAN posht-e terminal neshaste. (bedoon-e argument-e --domain in tanha
+  # masir-e nasb-e taamoli ast.)
+  if [ "${#INIT_ARGS[@]}" -eq 0 ] && [ -n "$TTY_DEV" ]; then
+    /usr/local/bin/ratholectl init < "$TTY_DEV" || die "init shekast khord."
+  else
+    /usr/local/bin/ratholectl init "${INIT_ARGS[@]}" || die "init shekast khord."
+  fi
 fi
 
 # masir file nginx ke init tvlid/riplis krd ra az state bkhvan va az tadakhol mstsni kon

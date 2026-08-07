@@ -1344,8 +1344,12 @@ cmd_update(){
       warn "kanal-e BETA: $rel — in noskhe azmayeshi ast va momken ast paydar nabashad."
       ;;
     stable|latest|'') ;;
-    *) die "estefade: ratholenode update [beta|stable]" ;;
+    v[0-9]*|[0-9]*) rel="$1" ;;   # pin-e sarih: ratholenode update v1.8.0
+    *) die "estefade: ratholenode update [beta|stable|vX.Y.Z]" ;;
   esac
+  # tag dar URL miayad — etebar-sanji kon (jelogiri az path-traversal/tazrigh dar masir).
+  [ "$rel" = "latest" ] || printf '%s' "$rel" | grep -qE '^[0-9A-Za-z._-]+$' \
+    || die "tag-e noskhe namotabar: '$rel'."
   local path; if [ "$rel" = "latest" ]; then path="releases/latest/download/install.sh"; else path="releases/download/${rel}/install.sh"; fi
   local mirrors=("" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/")
   local tmp m ok=0; tmp="$(mktemp)"
@@ -1390,7 +1394,7 @@ ratholenode — mdirit klaint rathole (chnd service rooye yek tunnel)
   migrate                        naghshe-ye mohajerat hame tunnelha (main + upstreamha) be kcp
   watchdog <on [interval]|off|status>   restart khodkar tunnel gir-karde/ghat-shode
   backup [file] | restore <file>   backup/restore tanzimat node
-  update [beta|stable]           beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release (azmayeshi)
+  update [beta|stable|vX.Y.Z]    beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release؛ tag = noskhe-ye khas
   logs [n]                       log-e rathole-client
   logs all [n] [--bundle]        log-e HAME chiz (service-ha + config-ha) — token-ha redact mishavand; --bundle = file-e .txt.gz baraye scp
   show                           namayesh tanzimat (tokenha makhfi)
@@ -1411,7 +1415,10 @@ adaptive_probe_tcp(){
   local t0 t1 ms
   t0="$(date +%s%3N 2>/dev/null || echo 0)"
   if timeout 5 bash -c "exec 3<>/dev/tcp/${host}/${port}" 2>/dev/null; then
-    exec 3>&- 2>/dev/null || true
+    # `exec 3>&- 2>/dev/null` (bedoon-e command) HAR DO redirect ra DAEMI mikonad — yaani
+    # stderr-e kol-e process ta akhar khafe mishod. group lazem ast: fd 3 baste mishavad
+    # vali 2>/dev/null faghat hamin ja eemal mishavad.
+    { exec 3>&-; } 2>/dev/null || true
     t1="$(date +%s%3N 2>/dev/null || echo "$t0")"
     ms=$(( t1 - t0 ))
     echo "healthy:${ms}"
@@ -1700,7 +1707,12 @@ RTH_LOCK="/run/ratholenode.lock"
 rth_with_lock(){
   mkdir -p "$(dirname "$RTH_LOCK")" 2>/dev/null || RTH_LOCK="/tmp/ratholenode.lock"
   if command -v flock >/dev/null 2>&1; then
-    exec 9>"$RTH_LOCK" 2>/dev/null || { "$@"; return $?; }
+    # BEHRANI: `exec 9>file 2>/dev/null` (bedoon-e command) redirect ra DAEMI mikonad —
+    # yaani stderr-e KOL-e process ta akhar be /dev/null miraft va HAMEYE payam-haye
+    # err/die BI-SEDA gom mishodand (masalan rahnama-ye «--domain bede» dar init: karbar
+    # faghat «init shekast khord» ra midid). ba group، 2>/dev/null faghat baraye hamin
+    # exec eemal mishavad va fd 9 ham hamchenan set mishavad.
+    { exec 9>"$RTH_LOCK"; } 2>/dev/null || { "$@"; return $?; }
     flock -w 30 9 || warn "ghofl-e state azad nashod (30s); edame midaham."
     "$@"; local rc=$?
     exec 9>&-

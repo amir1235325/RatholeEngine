@@ -9,7 +9,13 @@
 #   curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo bash -s -- --update
 #   curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo bash -s -- --rollback
 #
+# nasb-e YEK NOSKHE-YE KHAS (release pinning) — ba flag، na motghayer-e mohiti:
+#   curl -fsSL .../install.sh | sudo bash -s -- --release v1.8.0 --panel --domain ...
+#   curl -fsSL .../install.sh | sudo bash -s -- --release v1.7.0 --update
+#   curl -fsSL .../install.sh | sudo bash -s -- --beta          # akharin pre-release
+#
 # bedoon argument (curl ... | sudo bash):
+#   - aval noskhe porside mishavad (latest / beta / tag-e khas) — Enter = latest
 #   - agar nasb-e mojood (panel/node/hub) tashkhis dade shavad → pishfarz UPDATE ast
 #   - vagarna menu-ye taamoli az /dev/tty porside mishavad (nasb-e jadid)
 #
@@ -31,6 +37,45 @@ err(){ printf '%s %s\n' "$(c_r '[!]')" "$*" >&2; }
 die(){ err "$*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "bayad ba root ejra shavad (curl ... | sudo bash -s -- ...)."
+
+# ---------- entekhab-e noskhe (release pinning) ----------
+# CHERA flag va na faghat motghayer-e mohiti: dar `RATHOLE_RELEASE=v1 curl ... | sudo bash` an
+# motghayer be CURL micshasbad na be bash-e sudo-shode، va `sudo` ham ba env_reset pak-ash mikonad.
+# pas karbar amalan hich rahi baraye pin kardan-e noskhe nadasht. flag az har do masir amn ast.
+# ARGS-e baghimande dast-nakhorde be bootstrap miravad (--panel/--node/--update/... hamchenan kar mikonad).
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release|--version|-r)
+      [ $# -ge 2 ] || die "$1 be yek meghdar niaz darad (masalan: --release v1.8.0 | latest | beta)."
+      REL="$2"; shift 2 ;;
+    --release=*|--version=*) REL="${1#*=}"; shift ;;
+    --beta)   REL="beta"; shift ;;
+    --stable) REL="latest"; shift ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
+# zir-e `curl | sudo bash` stdin pipe ast na terminal؛ agar /dev/tty baz shavad hanooz
+# mitavanim beporsim. (hamsan-e elgo-ye bootstrap.sh — `[ -r /dev/tty ]` DOROGH migoyad.)
+TTY_DEV=""
+if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then TTY_DEV="/dev/tty"; fi
+
+# faghat vaghti karbar NA flag dade va NA env — va terminal darim. Enter = latest.
+ask_release(){
+  [ -n "${RATHOLE_RELEASE:-}" ] && return 0
+  local a="" t="${RTH_READ_TIMEOUT:-300}"
+  echo
+  echo "$(c_g 'kodam noskhe nasb shavad?')"
+  echo "  - Enter        → latest (akharin noskhe-ye paydar — tosiye)"
+  echo "  - yek tag      → masalan v1.8.0 (noskhe-ye khas-e montasher-shode)"
+  echo "  - beta         → akharin pre-release (azmayeshi)"
+  if   [ -n "$TTY_DEV" ]; then IFS= read -rt "$t" -p "entekhab [latest]: " a < "$TTY_DEV" || a=""
+  elif [ -t 0 ];         then IFS= read -rt "$t" -p "entekhab [latest]: " a || a=""
+  fi
+  REL="${a:-latest}"
+}
 
 # ---------- nasb-e pish-niaz-e hadaghali ----------
 install_prereqs(){
@@ -88,10 +133,23 @@ resolve_beta_tag(){
 
 # masir-e download ra bar asas-e kanal moshakhas mikonad (baad az tarif-e fetch/die چون beta be shabake niaz darad).
 resolve_dl(){
+  case "$REL" in
+    stable) REL="latest" ;;
+  esac
   if [ "$REL" = "beta" ]; then
     log "peyda kardan-e akharin noskhe-ye beta..."
     REL="$(resolve_beta_tag)" || die "hich noskhe-ye beta-i montasher nashode (ya dastresi be GitHub nist)."
     warn "kanal-e BETA: $(c_y "$REL") — noskhe-ye azmayeshi، momken ast paydar nabashad."
+  fi
+  # tag ra etebar-sanji kon: in meghdar dar URL miayad، pas kharakter-e gheyr-mojaz nabayad
+  # dashte bashad (jelogiri az path-traversal/tazrigh dar masir-e download).
+  if [ "$REL" != "latest" ]; then
+    case "$REL" in
+      v[0-9]*|[0-9]*) : ;;
+      *) die "tag-e noskhe namotabar: '$REL' (masalan: v1.8.0 | latest | beta)." ;;
+    esac
+    printf '%s' "$REL" | grep -qE '^[0-9A-Za-z._-]+$' \
+      || die "tag-e noskhe namotabar: '$REL' (faghat harf/adad/. _ - mojaz ast)."
   fi
   if [ "$REL" = "latest" ]; then DL="$BASE/latest/download"; else DL="$BASE/download/$REL"; fi
 }
@@ -100,6 +158,12 @@ main(){
   install_prereqs
   local tmp; tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
+
+  # bedoon-e flag/env va ba terminal → beporsim (Enter = latest). ba flag ya bedoon-e tty:
+  # hich porseshi nist va raftar-e ghabli (latest) dast-nakhorde mimanad.
+  if [ "$REL" = "latest" ] && [ -z "${RATHOLE_RELEASE:-}" ] && { [ -t 0 ] || [ -n "$TTY_DEV" ]; }; then
+    ask_release
+  fi
 
   resolve_dl
   log "download az GitHub release: $(c_y "$GH ($REL)")"
@@ -122,7 +186,10 @@ main(){
   log "baste daryaft shod: $(basename "$bundle")  ($(du -h "$bundle" 2>/dev/null | cut -f1))"
 
   # 3) tahvil be bootstrap.sh (hameye argvman-haye passed be bootstrap miravand)
+  # RATHOLE_RELEASE-e halshode ra export mikonim: masir-e `--update` be update.sh miresad va
+  # nabayad dobare be `latest` bargardad (vagarna noskhe-ye pin-shode bi-seda avaz mishavad).
   log "ejra-ye bootstrap..."
+  export RATHOLE_GH="$GH" RATHOLE_RELEASE="$REL"
   exec bash "$tmp/bootstrap.sh" --local "$bundle" "$@"
 }
 

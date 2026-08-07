@@ -2899,8 +2899,12 @@ cmd_update(){
       warn "kanal-e BETA: $rel — in noskhe azmayeshi ast va momken ast paydar nabashad."
       ;;
     stable|latest|'') ;;
-    *) die "estefade: ratholectl update [beta|stable]" ;;
+    v[0-9]*|[0-9]*) rel="$1" ;;   # pin-e sarih: ratholectl update v1.8.0
+    *) die "estefade: ratholectl update [beta|stable|vX.Y.Z]" ;;
   esac
+  # tag dar URL miayad — etebar-sanji kon (jelogiri az path-traversal/tazrigh dar masir).
+  [ "$rel" = "latest" ] || printf '%s' "$rel" | grep -qE '^[0-9A-Za-z._-]+$' \
+    || die "tag-e noskhe namotabar: '$rel'."
   local path; if [ "$rel" = "latest" ]; then path="releases/latest/download/install.sh"; else path="releases/download/${rel}/install.sh"; fi
   local mirrors=("" "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/")
   local tmp m ok=0; tmp="$(mktemp)"
@@ -2960,7 +2964,7 @@ dstvrha:
   game rm <name> | ls | show <name> | cert <sni>   mdirit service game va gvahi
   restart                      restart kamel rathole-server (tunnelha lhzhai ghat)
   enable                       faalsazi va start rathole-server
-  update [beta|stable]         beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release (azmayeshi)
+  update [beta|stable|vX.Y.Z]  beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release؛ tag = noskhe-ye khas
   version                      chap-e noskhe-ye manager + rathole
   menu                         mnvi taamoli (pishfarz)
 USAGE
@@ -3068,7 +3072,12 @@ RTH_LOCK="/run/ratholectl.lock"
 rth_with_lock(){
   mkdir -p "$(dirname "$RTH_LOCK")" 2>/dev/null || RTH_LOCK="/tmp/ratholectl.lock"
   if command -v flock >/dev/null 2>&1; then
-    exec 9>"$RTH_LOCK" 2>/dev/null || { "$@"; return $?; }
+    # BEHRANI: `exec 9>file 2>/dev/null` (bedoon-e command) redirect ra DAEMI mikonad —
+    # yaani stderr-e KOL-e process ta akhar be /dev/null miraft va HAMEYE payam-haye
+    # err/die BI-SEDA gom mishodand (masalan rahnama-ye «--domain bede» dar init: karbar
+    # faghat «init shekast khord» ra midid). ba group، 2>/dev/null faghat baraye hamin
+    # exec eemal mishavad va fd 9 ham hamchenan set mishavad.
+    { exec 9>"$RTH_LOCK"; } 2>/dev/null || { "$@"; return $?; }
     flock -w 30 9 || warn "ghofl-e state azad nashod (30s); edame midaham."
     "$@"; local rc=$?
     exec 9>&-
