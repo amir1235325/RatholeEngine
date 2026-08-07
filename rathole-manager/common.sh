@@ -30,11 +30,29 @@ has_tty(){ [ -t 0 ] || [ -n "$RTH_TTY" ]; }
 
 # backstop-e zamani: hatta ba tty-ye VAGHEI (masalan screen/tmux-e detach-shode ya terminal-i
 # ke kasi payash nist) nabayad ta abad gir konim. sanie — ba RTH_READ_TIMEOUT ghabl-e taghir.
+# ghofl-e state (fd 9) nabayad hengam-e entezar baraye TAYP-e karbar negah dashte shavad:
+# `menu` yek halghe-ye taamoli-ye bi-payan ast va `init` montazer-e javab mimanad. dar in
+# modat HAR ratholectl-e digar (masalan action-e hub az SSH) 30 sanie gir mikard va baad
+# BI-GHOFL edame midad — yaani haman mohafezat-e lost-update dor mizad. pas ghabl az read
+# ghofl ra AZAD mikonim va baad az javab DOBARE migirim; read-modify-write-e mutator-ha
+# hamchenan kamel zir-e ghofl ejra mishavad (next_port/jq baad az porsesh-ha miayad).
+# RTH_LOCK_HELD tanha dar masir-e flock set mishavad; fallback-e mkdir (sistem-haye bedoon-e
+# flock) hamchenan ghofl ra negah midarad — nadir ast va sadegi mohem-tar.
+RTH_LOCK_HELD=0
+rth_lock_pause(){ if [ "${RTH_LOCK_HELD:-0}" = 1 ]; then flock -u 9 2>/dev/null || true; fi; }
+rth_lock_resume(){
+  if [ "${RTH_LOCK_HELD:-0}" = 1 ]; then
+    flock -w 30 9 2>/dev/null || warn "ghofl-e state pas az javab azad nashod (30s); edame midaham."
+  fi
+}
+
 rth_read(){   # estefade: rth_read VAR "prompt"
   local __v="$1" __p="${2:-}" __a="" __t="${RTH_READ_TIMEOUT:-300}"
+  rth_lock_pause
   if [ -t 0 ]; then read -rt "$__t" -p "$__p" __a
   elif [ -n "$RTH_TTY" ]; then read -rt "$__t" -p "$__p" __a < "$RTH_TTY"
   else __a=""; fi
+  rth_lock_resume
   printf -v "$__v" '%s' "$__a"
 }
 # bedoon-e tty (ya baad az timeout) javab HAMISHE «na» ast — pishfarz-e amn baraye
