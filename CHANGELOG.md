@@ -9,7 +9,17 @@ release.yml hamin bakhsh ra be onvan-e title/body-e GitHub Release montasher mik
 
 ## [Unreleased]
 
-## [1.8.3] - 2026-08-07
+## [1.8.4] - 2026-08-09
+
+### Added
+- **مستندات کامل دوزبانه (bilingual docs):** نسخه‌ی انگلیسی کامل برای transport-modes، hub، architecture، traffic-flow و performance. ویکی فارسی بازنویسی کامل شد: CLI-Reference با تمام دستورات (domain، ip-cert، proxy، direct، upstream، watchdog، ...)، Hub-Management با routing console + REST API + audit log، Troubleshooting با همه سناریوها، Adaptive-Filtering-Guide با ws_timeout و cooldown.
+- **زیرساخت ریپازیتوری:** CONTRIBUTING.md، SECURITY.md، سه issue template (bug/feature/setup)، PR template، .github/FUNDING.yml، CHANGELOG.en.md (ترجمه کامل Finglish به انگلیسی)، GitHub topics (iran، censorship-circumvention، reverse-tunnel، ...)، star history badge.
+- **بهبود README:** جدول مستندات کامل (لینک‌های bilingual)، بخش Donate (USDT BEP-20 / TON / TRX)، Contents آپدیت.
+- **docs/README.fa.md:** اضافه‌شدن domain add/rm/ls/primary، ip-cert، set-main، watchdog، logs، backup/restore، upstream کامل، update tag pinning.
+- **install-manual.md/.fa.md:** بخش‌های optional برای direct-IP، ip-cert + set-main، watchdog، multi-domain management.
+- **architecture.md و traffic-flow.md:** پوشش direct-IP، proxy، multi-domain، ip-cert.
+
+
 
 ### Fixed
 - **ghofl-e state hengam-e entezar baraye tayp-e karbar negah dashte mishod (regression az
