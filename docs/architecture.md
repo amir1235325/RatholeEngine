@@ -31,11 +31,41 @@
 
 ## حالت‌های transport
 
-همان تونل می‌تواند ترافیک را چهار جور حمل کند (websocket+TLS پیش‌فرض، kcp، plain، noise) به‌علاوه‌ی حالت game/SNI. جزئیات کامل: [`transport-modes.md`](transport-modes.md).
+همان تونل می‌تواند ترافیک را **پنج جور** حمل کند (websocket+TLS پیش‌فرض، kcp، plain، noise، backhaul) به‌علاوه‌ی حالت game/SNI و دو ورودی کاربری (direct-IP، proxy). جزئیات کامل: [`transport-modes.md`](transport-modes.md).
+
+## ورودی‌های کاربری (Ingress)
+
+علاوه بر مسیریابی استاندارد با path روی ۴۴۳، دو ورودی جایگزین برای کاربر وجود دارد:
+
+- **direct-IP:** یک پورت HTTP جداگانه (پیش‌فرض ۸۰۸۱) که کاربر مستقیم به IP سرور وصل می‌شود. انتخاب نود با یک هدر استتارشده (`X-Cdn-Id: <node_name>`) انجام می‌شود — نه path. مسیر تونل ایران↔نود دست‌نخورده می‌ماند.
+- **proxy:** یک `/<name>/` روی همان ۴۴۳ که به یک upstream دلخواه proxy می‌شود — **بدون عبور از rathole**. برای سرویس‌های مستقل که نمی‌خواهی یک تونل جداگانه باز کنی.
+
+## چند دامنه و گواهی IP
+
+یک سرور ایران می‌تواند چند دامنه را پشتیبانی کند — هر کدام با server block جداگانه روی همان ۴۴۳:
+
+```bash
+ratholectl domain add cdn.example.ir [--certbot]   # دامنه اضافی
+ratholectl domain primary cdn.example.ir           # تغییر دامنه اصلی
+```
+
+برای کاربرانی که می‌خواهند مستقیم با IP سرور وصل شوند (بدون دامنه)، می‌توان یک گواهی self-signed برای آن IP ساخت و روی نود به‌عنوان trusted root ثبت کرد:
+
+```bash
+ratholectl ip-cert <IPv4>                          # ساخت گواهی self-signed
+ratholenode set-main <ip>:443 <ip> /path/to/cert   # ثبت trusted root روی نود
+```
 
 ## مستندات مرتبط
 
-- [`traffic-flow.md`](traffic-flow.md) — مسیر بسته لایه‌به‌لایه.
+- [`transport-modes.md`](transport-modes.md) — حالت‌های transport (فارسی)
+- [`transport-modes.en.md`](transport-modes.en.md) — Transport Modes (English)
+- [`hub.md`](hub.md) — پنل هاب، REST API و مدل امنیتی (فارسی)
+- [`hub.en.md`](hub.en.md) — Hub panel, REST API and security model (English)
+- [`traffic-flow.md`](traffic-flow.md) — مسیر بسته لایه‌به‌لایه (شامل direct-IP و proxy).
 - [`performance.md`](performance.md) — تیونینگ فراتر از تونل (BBR، kcp، گلوگاه‌های غیرتونل).
 - [`README.fa.md`](README.fa.md) — مرجع کامل CLI و روش‌های نصب.
+- [`install-manual.fa.md`](install-manual.fa.md) — نصب دستی گام‌به‌گام (فارسی)
+- [`install-manual.md`](install-manual.md) — Manual install walkthrough (English)
+- [**Wiki — مرجع کامل دستورات**](https://github.com/loopy-iri/RatholeEngine/wiki/CLI-Reference)
 - [`../rathole-multilocation-pasargad.md`](../rathole-multilocation-pasargad.md) — سند طراحی/عیب‌یابی تفصیلی اصلی.

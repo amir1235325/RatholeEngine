@@ -85,7 +85,12 @@
 
 ---
 
-## ۸) adaptive failover (v1.5.0+)
+## همچنین ببینید
+
+- [مرجع کامل دستورات CLI (ویکی)](https://github.com/loopy-iri/RatholeEngine/wiki/CLI-Reference) — syntax کامل همه دستورات
+- [راهنماهای عملی (ویکی)](https://github.com/loopy-iri/RatholeEngine/wiki/Workflow-Guides) — راه‌اندازی direct-IP، مهاجرت به backhaul، چند دامنه، multi-upstream
+- [`transport-modes.en.md`](transport-modes.en.md) — نسخه انگلیسی همین سند
+- [`architecture.md`](architecture.md) — معماری کلی سیستم
 
 > یک لایه‌ی **خودکار** بالای حالت‌های ۱–۵. حاملِ فعال را بدون دخالت اپراتور عوض می‌کند.
 

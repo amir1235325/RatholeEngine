@@ -376,6 +376,56 @@ sudo ratholenode backup              # بکاپ state نود
 sudo ratholenode update              # آپدیت کامل از GitHub (آخرین Release؛ snapshot + rollback خودکار)
 ```
 
+### اختیاری: دسترسی direct-IP (مسیریابی با header، بدون دامنه/TLS)
+
+اگر می‌خواهید کاربران مستقیم با **IP سرور ایران** وصل شوند (بدون دامنه، بدون TLS):
+
+```bash
+# روی سرور ایران:
+sudo ratholectl direct on [--port 8081] [--header X-Cdn-Id]
+# یک پورت HTTP ساده باز می‌کند؛ nginx با مقدار header → نام نود مسیریابی می‌کند
+# ⚠ پورت را در فایروال باز کنید: ufw allow 8081/tcp
+
+sudo ratholectl direct show trk01    # کانفیگ آماده کلاینت Xray را چاپ می‌کند
+```
+
+در کانفیگ Xray کاربر: transport = WebSocket **بدون TLS**، `address:port` = `<IP_ایران>:8081`، هدر اضافه = `X-Cdn-Id: trk01`، `path` = `/trk01`.
+
+### اختیاری: اتصال نود با IP و گواهی self-signed
+
+اگر دامنه‌ی ایران فیلتر شده ولی IP قابل دسترس است:
+
+```bash
+# روی سرور ایران — ساخت گواهی self-signed برای IP:
+sudo ratholectl ip-cert <IPv4_ایران>
+sudo ratholectl ip-cert-show <IPv4_ایران>   # محتوای fullchain.pem را چاپ می‌کند
+```
+
+```bash
+# روی نود — ذخیره و ثبت trusted root:
+echo "<محتوای fullchain.pem>" | sudo tee /etc/rathole/trusted-iran.pem
+sudo ratholenode set-main <IPv4_ایران>:443 <IPv4_ایران> /etc/rathole/trusted-iran.pem
+```
+
+### اختیاری: Watchdog (راه‌اندازی مجدد خودکار)
+
+یک systemd timer سبک که تانل‌های گیرکرده را بررسی و restart می‌کند:
+
+```bash
+sudo ratholenode watchdog on [60]   # چک هر ۶۰ ثانیه (پیش‌فرض)
+sudo ratholenode watchdog status
+sudo ratholenode watchdog off
+```
+
+### اختیاری: چند دامنه روی یک سرور ایران
+
+```bash
+sudo ratholectl domain add cdn.example.ir --certbot
+sudo ratholectl domain ls
+sudo ratholectl domain rm cdn.example.ir
+sudo ratholectl domain primary cdn.example.ir   # تغییر دامنه اصلی
+```
+
 ---
 
 ## ۵. نصب کامل هاب مرکزی

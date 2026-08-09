@@ -280,3 +280,49 @@ nginx عمومی عبور نمی‌کند و بیرون دیده نمی‌شود
 - **مقیاس‌پذیری:** افزودن نود = یک خط در `map` + یک سرویس rathole؛ همه با `ratholectl add` خودکار.
 
 برای جزئیات نصب و مدیریت: [`README.fa.md`](README.fa.md). برای عیب‌یابی عمیق و ملاحظات فیلترینگ: [`rathole-multilocation-pasargad.md`](../rathole-multilocation-pasargad.md).
+
+---
+
+## مسیر ترافیک direct-IP (ورودی بدون دامنه/TLS)
+
+وقتی `ratholectl direct on` فعال است، کاربر می‌تواند مستقیم به **IP سرور ایران** وصل شود — بدون دامنه، بدون TLS. مسیر داخلی تانل ایران↔نود دست‌نخورده می‌ماند.
+
+```
+کاربر ──HTTP/8081──► nginx (:8081، بدون TLS)
+                        ├── X-Cdn-Id: trk01  →  map header → 1001 → rathole → نود
+                        ├── X-Cdn-Id: nld01  →  map header → 1002 → rathole → نود
+                        └── هدر ناشناس/خالی  →  سایت فیک
+```
+
+**لایه‌های مسیر:**
+
+| گام | لایه | کار |
+|-----|------|-----|
+| 1 | کاربر | WebSocket بدون TLS به `<IP>:8081`، هدر `X-Cdn-Id: trk01` |
+| 2 | nginx | `map $http_x_cdn_id $direct_port` → پورت لوکال rathole (`1001`) |
+| 3 | rathole | باز کردن data channel داخل تانل موجود |
+| 4 | نود | تحویل به Xray inbound (`127.0.0.1:2087`) |
+| 5 | Xray | خروج به اینترنت |
+
+**تفاوت با مسیر استاندارد:**
+- مسیر استاندارد: `wss://domain:443/trk01` → nginx TLS → map `$uri`
+- direct-IP: `ws://IP:8081` + header → nginx plain → map `$http_<header>`
+- هر دو در نهایت به همان `127.0.0.1:1001` (data port rathole) می‌رسند
+
+---
+
+## مسیر ترافیک proxy (upstream غیرتونلی)
+
+وقتی `ratholectl proxy add mysvc http://127.0.0.1:9000` فعال است، nginx یک `location /<mysvc>/` می‌سازد که **بدون عبور از rathole** مستقیم به upstream proxy می‌شود:
+
+```
+کاربر ──wss://domain:443/mysvc/──► nginx (:443، TLS)
+                                      └── location /mysvc/  →  proxy_pass → http://127.0.0.1:9000
+                                                               (هیچ rathole-ای در کار نیست)
+```
+
+**تفاوت با مسیر تانل:**
+- تانل معمولی: nginx → rathole server → تانل → نود خارج → Xray
+- proxy: nginx → upstream مستقیم (همان سرور یا هر upstream دیگری)
+
+مناسب برای سرویس‌هایی که خودشان تانل یا پروکسی دارند و نمی‌خواهی یک اتصال rathole جداگانه باز کنی.

@@ -56,7 +56,7 @@ The core design principle everywhere: **change state → regenerate config → v
 
 ## Transport modes
 
-The same tunnel can be carried **five** ways (plus a game/SNI L4 mode) — switching never changes user services, tokens, or paths, only the carrier. Each node's carrier is **exclusive**: the hub exposes it as a single select (`ws`/`kcp`/`plain`/`noise`/`backhaul`) that coordinates both sides.
+The same tunnel can be carried **five** ways (plus a game/SNI L4 mode, direct-IP ingress, and a proxy ingress) — switching never changes user services, tokens, or paths, only the carrier. Each node's carrier is **exclusive**: the hub exposes it as a single select (`ws`/`kcp`/`plain`/`noise`/`backhaul`) that coordinates both sides.
 
 ![Transport modes](docs/assets/transport-modes.svg)
 
@@ -64,8 +64,10 @@ The same tunnel can be carried **five** ways (plus a game/SNI L4 mode) — switc
 - **kcp** — parallel UDP+FEC path for lossy links (looks like QUIC on UDP/443).
 - **plain** — no-TLS websocket to a separate HTTP listener (lighter, unencrypted).
 - **noise** — encrypted transport (Noise/X25519) on a second rathole instance, no TLS/cert.
-- **backhaul** *(v1.6)* — a separate Go core (`Musixal/Backhaul`) beside rathole that multiplexes many user connections onto one stream via **SMUX**; nginx proxies the hardcoded `/channel` + `/tunnel` paths to it on the same 443, so single-port/single-domain holds.
+- **backhaul** *(v1.6)* — a separate Go core (`Musixal/Backhaul`, patched with uTLS Chrome fingerprint since v1.8) beside rathole that multiplexes many user connections onto one stream via **SMUX**; nginx proxies the hardcoded `/channel` + `/tunnel` paths to it on the same 443, so single-port/single-domain holds.
 - **game / SNI** — L4 passthrough on 443; TLS terminates on the node (VLESS+TLS+Vision).
+- **direct-IP** *(ingress, not a tunnel carrier)* — a separate HTTP listener where node selection comes from a hidden header (`X-Cdn-Id: <node_name>`) instead of URL path; users connect to the raw server IP, no domain/TLS required.
+- **proxy** *(ingress)* — a `/<name>/` path on the same 443 that `proxy_pass`es to any upstream without going through rathole.
 - **adaptive failover** *(v1.5.0)* — timer-driven probes classify each carrier (`healthy / tls_failed / tcp_timeout / …`) and auto-switch between ws and kcp with hysteresis + cooldown; plain requires explicit `ALLOW_INSECURE=1`.
 - **secret control path** *(v1.5.0)* — WebSocket control upgraded from `/` to `/_rh/<32 hex>`; nginx routes only that exact path to rathole; all other paths retain fake-site behaviour.
 

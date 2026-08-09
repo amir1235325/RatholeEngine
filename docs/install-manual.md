@@ -374,6 +374,66 @@ sudo ratholenode backup              # back up node state
 sudo ratholenode update              # full update from GitHub (latest Release; snapshot + auto-rollback)
 ```
 
+### Optional: Direct-IP access (header-based routing, no domain/TLS)
+
+If you want users to connect directly to the **IP address** of the Iran server (no domain, no TLS), enable the direct-IP listener:
+
+```bash
+# On the Iran server:
+sudo ratholectl direct on [--port 8081] [--header X-Cdn-Id]
+# Opens a plain HTTP port; nginx routes by header value = node name
+# ⚠ Open the port in your firewall: ufw allow 8081/tcp
+
+sudo ratholectl direct show trk01    # prints ready Xray client config
+```
+
+In the Xray/V2Ray client: transport = WebSocket **without TLS**, `address:port` = `<IRAN_IP>:8081`, add the header `X-Cdn-Id: trk01` (or whatever header name you chose), `path` = `/trk01` (same as always).
+
+### Optional: Connect a node via IP with self-signed TLS
+
+If the Iran domain is blocked but the IP is reachable, generate a self-signed cert for the IP and trust it on the node:
+
+```bash
+# On the Iran server — create self-signed cert for the IP:
+sudo ratholectl ip-cert <IRAN_IPv4>
+
+# Print the public cert to copy to the node:
+sudo ratholectl ip-cert-show <IRAN_IPv4>   # outputs fullchain.pem content
+```
+
+```bash
+# On the node — save the cert and point the tunnel at the IP:
+echo "<fullchain.pem content>" | sudo tee /etc/rathole/trusted-iran.pem
+sudo ratholenode set-main <IRAN_IPv4>:443 <IRAN_IPv4> /etc/rathole/trusted-iran.pem
+```
+
+After `set-main`, the node dials `<IRAN_IPv4>:443` and presents the server IP as the TLS SNI, verifying against the saved cert — no domain needed.
+
+### Optional: Watchdog (auto-restart stuck tunnels)
+
+A lightweight systemd timer that periodically checks whether the tunnel services are up and restarts them if they appear stuck:
+
+```bash
+sudo ratholenode watchdog on [60]   # check every 60 seconds (default)
+sudo ratholenode watchdog status
+sudo ratholenode watchdog off
+```
+
+### Optional: Multiple domains on one Iran server
+
+One Iran server can serve traffic from multiple domains — each with its own nginx server block and cert, all on the same port 443:
+
+```bash
+sudo ratholectl domain add cdn.example.ir --certbot
+sudo ratholectl domain ls
+sudo ratholectl domain rm cdn.example.ir
+
+# Change the primary domain + cert:
+sudo ratholectl domain primary cdn.example.ir --certbot
+```
+
+> If you have a wildcard or CDN cert that already covers both domains, pass `--fullchain /path` and `--key /path` instead of `--certbot`.
+
 ---
 
 ## 5. Full central hub install

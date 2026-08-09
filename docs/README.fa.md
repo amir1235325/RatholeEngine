@@ -81,8 +81,30 @@ ratholectl doctor                      # بررسی سلامت
 ratholectl version                     # نسخهٔ manager + rathole (manager_version=/rathole_version=)
 ratholectl update                      # به‌روزرسانی کامل از GitHub (آخرین Release؛ snapshot + rollback خودکار)
 ratholectl update beta                 # کانال بتا: آخرین pre-release (آزمایشی)
+ratholectl update v1.8.0               # آپدیت به نسخه‌ی خاص
 ratholectl menu                        # منوی تعاملی کامل
 ```
+
+#### مدیریت چند دامنه
+
+```bash
+ratholectl domain add <domain> [--certbot] [--email E] [--fullchain F] [--key K]
+# دامنه‌ی اضافی روی همان سرور؛ اگر گواهی ندارد از گواهی دامنه اصلی استفاده می‌کند (مناسب CNAME پشت Cloudflare)
+ratholectl domain rm <domain>
+ratholectl domain ls
+ratholectl domain primary <domain> [--certbot|--fullchain F --key K]
+# تغییر دامنه‌ی اصلی + گواهی
+
+# دریافت گواهی Let's Encrypt با certbot (nginx را موقتاً می‌بندد):
+ratholectl cert <domain> [email]
+
+# گواهی self-signed برای ورود مستقیم به IP (بدون دامنه):
+ratholectl ip-cert <IPv4> [days]       # پیش‌فرض ۸۲۵ روز
+ratholectl ip-cert-show [IP]           # خروجی public cert (برای pin کردن روی نود)
+ratholectl ip-cert-off                 # حذف vhost IP TLS
+```
+
+> **ip-cert + set-main:** وقتی گواهی self-signed برای IP ساختی، نود باید با `set-main` آن را به‌عنوان trusted root ثبت کند (ببین زیر بخش ratholenode).
 
 هر تغییر، کانفیگ‌ها را بازتولید و سرویس‌ها را reload می‌کند.
 
@@ -125,11 +147,29 @@ ratholenode ls                         # لیست سرویس‌های روی ا�
 ratholenode add-svc <name> <token> <inbound>   # افزودن سرویس به همان تونل (توکن از 'ratholectl add' پنل)
 ratholenode rm-svc <name>              # حذف سرویس
 ratholenode set SERVER newdomain:443   # تغییر سرور (تانل اصلی/main)
+ratholenode set-main <host:port> [tls_hostname] [trusted_root]
+# تنظیم اتمیک سرور + SNI + CA سفارشی — برای اتصال به IP با گواهی self-signed:
+# ratholenode set-main <ip>:443 <ip> /etc/rathole/trusted-<ip>.pem
 ratholenode check                      # بررسی تداخل پورت با nginx نود
+ratholenode logs [n]                   # آخرین n خط لاگ تانل اصلی (پیش‌فرض ۵۰)
+ratholenode logs all                   # لاگ تانل اصلی + همه upstreamها
+ratholenode backup [file]              # snapshot از node.env + services + upstreamها
+ratholenode restore <file>             # بازگردانی + بازتولید config + restart
 ratholenode update                     # به‌روزرسانی کامل از GitHub (آخرین Release؛ snapshot + rollback خودکار)
 ratholenode update beta                # کانال بتا: آخرین pre-release (آزمایشی)
+ratholenode update v1.8.0              # آپدیت به نسخه‌ی خاص
 ratholenode version                    # نسخهٔ manager + rathole
 ratholenode status | logs | apply
+```
+
+#### Watchdog — راه‌اندازی مجدد خودکار تانل‌های گیرکرده
+
+```bash
+ratholenode watchdog on [interval_sec]   # پیش‌فرض ۶۰ ثانیه
+# یک systemd.timer می‌سازد که periodically سرویس‌های تانل را بررسی می‌کند؛
+# اگر service down باشد یا log پر از retry/connection error باشد، restart می‌کند.
+ratholenode watchdog off
+ratholenode watchdog status
 ```
 
 #### چند IP خروجی روی یک تونل (multi-egress)
@@ -198,6 +238,23 @@ ratholenode kcp on <IRAN1_IP>:443 <KEY1> balanced
 ratholenode upstream kcp <id> on <IRAN2_IP>:443 <KEY2> balanced
 ratholenode upstream kcp <id> status
 ratholenode upstream kcp <id> off          # فقط همان upstream را برمی‌گرداند
+```
+
+#### مدیریت کامل upstreamها (چند سرور ایران)
+
+```bash
+ratholenode upstream add <id> <server:port> [hostname]   # تعریف upstream جدید
+ratholenode upstream add-svc <id> <name> <token> <inbound>   # افزودن سرویس به upstream
+ratholenode upstream rm-svc <id> <name>
+ratholenode upstream rm <id>              # حذف کامل upstream + service
+ratholenode upstream apply <id>           # بازتولید client.toml این upstream + hot-reload
+ratholenode upstream restart <id>
+ratholenode upstream status <id>
+ratholenode upstream logs <id> [n]        # لاگ این upstream
+ratholenode upstream ls                   # لیست همه upstreamها با transport جاری
+ratholenode upstream ws <id>              # برگشت به transport=ws برای این upstream
+ratholenode upstream plain <id> on <host:port> | off | status
+ratholenode upstream noise <id> on <host:port> <pubkey> [pattern] | off | status
 ```
 هر تونل kcp-client جداگانه با پورت لوکال متفاوت (main=29900 ، upstreamها از 29901) و سرویس systemd مستقل (`rathole-kcp-up-<id>`) دارد؛ پس روی هم اثر نمی‌گذارند و هرکدام مستقل قابل خاموش/روشن‌اند.
 

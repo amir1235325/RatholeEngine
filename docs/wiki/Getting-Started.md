@@ -12,7 +12,7 @@
 curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/install.sh | sudo bash
 ```
 
-این دستور آخرین نسخه انتشاریافته (`v1.5.0`) را به همراه فایل‌های باینری بهینه‌شده برای معماری سرور شما (x86_64 یا aarch64) دانلود و اجرا می‌کند.
+این دستور آخرین نسخه‌ی انتشاریافته را به همراه فایل‌های باینری بهینه‌شده برای معماری سرور شما (x86_64 یا aarch64) دانلود و اجرا می‌کند.
 
 ---
 
@@ -80,3 +80,44 @@ curl -fsSL https://raw.githubusercontent.com/loopy-iri/RatholeEngine/main/instal
 برگشت به کانال پایدار فقط با زدن `ratholectl update` (بدون آرگومان) انجام می‌شود.
 
 ⚠️ نسخه‌ی بتا آزمایشی است. چون آپدیت پیش از هر تغییر اسنپ‌شات کامل می‌گیرد، در صورت مشکل با `ratholectl update` یا `update.sh --rollback` برمی‌گردید.
+
+---
+
+## 🔧 قدم‌های بعدی (Optional)
+
+پس از نصب پایه، ویژگی‌های زیر را می‌توانید اضافه کنید:
+
+### ۱. فعال‌سازی هاب مدیریتی
+```bash
+sudo ratholectl hub on 8088   # → https://<domain>/hub/
+```
+برای مدیریت چند سرور ایران و نود از یک پنل وب. جزئیات: **[Hub Management](Hub-Management)**.
+
+### ۲. دسترسی مستقیم از طریق IP (بدون دامنه)
+```bash
+sudo ratholectl direct on --port 8081
+```
+برای کاربرانی که دامنه برایشان کار نمی‌کند — از طریق IP سرور با هدر استتارشده.
+
+### ۳. Watchdog (راه‌اندازی مجدد خودکار)
+```bash
+sudo ratholenode watchdog on   # روی نود خارج
+```
+یک timer که تانل‌های گیرکرده را خودکار restart می‌کند.
+
+### ۴. سوئیچ هوشمند حامل (Adaptive Failover)
+```bash
+sudo ratholenode adaptive on
+```
+نود خارج را روشن می‌کند تا در صورت فیلتر شدن WebSocket، خودکار به KCP سوئیچ کند. جزئیات: **[Adaptive Filtering](Adaptive-Filtering-Guide)**.
+
+### ۵. اتصال به چند سرور ایران (چند-موقعیتی)
+```bash
+sudo ratholenode upstream add iran2 <server2:443>
+sudo ratholenode upstream add-svc iran2 <name> <token> <inbound>
+```
+
+### ۶. مرجع کامل دستورات
+برای همه دستورات از جمله domain management، ip-cert، noise، backhaul و بیشتر: **[CLI Reference](CLI-Reference)**.
+
+برای عیب‌یابی: **[Troubleshooting](Troubleshooting)**.
