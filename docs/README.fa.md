@@ -554,14 +554,14 @@ sudo bash uninstall-node.sh --purge --yes
 > `uninstall-panel.sh` اگر فایل `*.rathole-orig.bak` وجود داشته باشد، کانفیگ nginx اصلی‌ات را **برمی‌گرداند**. بکاپ‌های پوشه‌ای تداخل (`/etc/nginx/rathole-backup-*`) دست‌نخورده می‌مانند تا در صورت نیاز دستی برگردانی. `common.sh` مشترک فقط وقتی حذف می‌شود که نقش دیگری (نود/هاب) روی همان سرور نباشد. گواهی Let's Encrypt هم عمداً حذف نمی‌شود.
 
 
-## حمایت مالی و Donation
+## حمایت مالی
 
-> tether bep-20
-> 0x2364898407e8A42DA554B909989cd9B28eE61314
+اگر RatholeEngine برایتان مفید بوده، با یکی از روش‌های زیر از توسعه‌ی مستمر آن حمایت کنید:
 
-> ton ton
-> UQCondoXRwQNt0fQvvmYGa_Fn39D9szjQH4eBqIcUd5r1yfH
+| شبکه | آدرس |
+|------|------|
+| **USDT (BEP-20 / BSC)** | `0x2364898407e8A42DA554B909989cd9B28eE61314` |
+| **TON** | `UQCondoXRwQNt0fQvvmYGa_Fn39D9szjQH4eBqIcUd5r1yfH` |
+| **TRX (Tron)** | `TRhnkJFpj9uxA2aqUxapJAFhkzNPbfxKwp` |
 
-> tron trx
-> TRhnkJFpj9uxA2aqUxapJAFhkzNPbfxKwp
 </div>

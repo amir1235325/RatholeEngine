@@ -1,0 +1,51 @@
+name: Setup help
+description: Something doesn't work after install
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **First:** run `sudo ratholectl doctor` on the Iran server and `sudo ratholenode status` on the node.
+        Check the [Troubleshooting wiki](https://github.com/loopy-iri/RatholeEngine/wiki/Troubleshooting) before filing.
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport mode
+      options:
+        - Default (WebSocket + TLS)
+        - KCP
+        - Backhaul (SMUX)
+        - Noise
+        - Plain
+        - Direct-IP
+        - Game / SNI
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version (`ratholectl version`)
+      placeholder: "v1.8.3"
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: What did you do?
+      description: Brief description of your setup (VPS location, install method, etc.)
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Symptom
+      placeholder: "Node connects but users have no internet / tunnel keeps retrying / ..."
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `ratholectl doctor`
+      render: shell
+    validations:
+      required: true

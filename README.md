@@ -19,6 +19,8 @@ _Built for censorship-resistant tunneling into Iran._
 ![python](https://img.shields.io/badge/python-stdlib%20only-3776AB?logo=python&logoColor=white)
 ![tunnel](https://img.shields.io/badge/tunnel-rathole%20%2B%20nginx-7c3aed)
 
+[![Star History](https://api.star-history.com/svg?repos=loopy-iri/RatholeEngine&type=Date)](https://star-history.com/#loopy-iri/RatholeEngine&Date)
+
 [**English**](#what-is-this) · [**فارسی**](docs/README.fa.md) · [**Full Wiki**](https://github.com/loopy-iri/RatholeEngine/wiki) · [Quick start](#quick-start) · [Documentation](#documentation) · [Telegram](https://t.me/l8PY4NET)
 
 </div>
@@ -36,6 +38,7 @@ _Built for censorship-resistant tunneling into Iran._
 - [Update & rollback](#update--rollback)
 - [Documentation](#documentation)
 - [Repository layout](#repository-layout)
+- [Donate](#donate)
 - [خلاصه‌ی فارسی](#خلاصهی-فارسی)
 
 ## What is this
@@ -157,15 +160,18 @@ TLS certs are never removed. The shared `common.sh` is removed only when no othe
 | Doc | Contents |
 |-----|----------|
 | [**GitHub Wiki**](https://github.com/loopy-iri/RatholeEngine/wiki) | **Complete GitHub Wiki** (Getting Started, CLI Reference, Adaptive Filtering, Hub, Troubleshooting). |
-| [`docs/architecture.md`](docs/architecture.md) | Three roles, the state→regenerate→reload principle, the path==name==map==inbound invariant. |
-| [`docs/transport-modes.md`](docs/transport-modes.md) | The four transport carriers + game/SNI, with diagram. |
-| [`docs/traffic-flow.md`](docs/traffic-flow.md) | Layer-by-layer packet path (Mermaid + SVG diagrams). |
-| [`docs/hub.md`](docs/hub.md) | Central web panel (`hub.py` + `hubcmds.py` + `ui/`): REST API, security model, allow-listed actions. |
+| [`docs/architecture.md`](docs/architecture.md) | Three roles, state→regenerate→reload principle, path==name==map==inbound invariant. |
+| [`docs/transport-modes.en.md`](docs/transport-modes.en.md) · [`fa`](docs/transport-modes.md) | All transport and ingress modes with commands (English · فارسی). |
+| [`docs/traffic-flow.md`](docs/traffic-flow.md) | Layer-by-layer packet path incl. direct-IP and proxy (Mermaid + SVG). |
+| [`docs/hub.en.md`](docs/hub.en.md) · [`fa`](docs/hub.md) | Hub web panel: REST API, security model, UI pages (English · فارسی). |
 | [`docs/performance.md`](docs/performance.md) | Tuning beyond the tunnel (BBR, kcp profiles, non-tunnel bottlenecks). |
 | [`docs/amneziawg-reverse.md`](docs/amneziawg-reverse.md) | A separate AmneziaWG reverse-tunnel design (not part of the rathole flow). |
 | [`docs/README.fa.md`](docs/README.fa.md) | **Full Persian CLI reference + install/uninstall flows.** |
 | [`docs/install-manual.md`](docs/install-manual.md) | **Full manual install (English):** Iran panel + Pasargad config + foreign nodes + hub, step by step. |
 | [`docs/install-manual.fa.md`](docs/install-manual.fa.md) | Same manual install guide, **Persian**. |
+| [`CHANGELOG.en.md`](CHANGELOG.en.md) | English changelog (translated from the Finglish source). |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute: tests, shellcheck, conventions, PR process. |
+| [`SECURITY.md`](SECURITY.md) | Vulnerability reporting policy. |
 | [`rathole-multilocation-pasargad.md`](rathole-multilocation-pasargad.md) | Original detailed design & troubleshooting doc (Persian). |
 
 ## Repository layout
@@ -188,16 +194,15 @@ rathole-manager/
 docs/                     documentation + assets/ (SVG/PNG diagrams)
 ```
 
-> Donation
+## <a id="donate"></a>Donate
 
-> tether bep-20
-> 0x2364898407e8A42DA554B909989cd9B28eE61314
+If RatholeEngine helps you, consider supporting continued development:
 
-> ton ton
-> UQCondoXRwQNt0fQvvmYGa_Fn39D9szjQH4eBqIcUd5r1yfH
-
-> tron trx
-> TRhnkJFpj9uxA2aqUxapJAFhkzNPbfxKwp
+| Network | Address |
+|---------|---------|
+| **USDT (BEP-20 / BSC)** | `0x2364898407e8A42DA554B909989cd9B28eE61314` |
+| **TON** | `UQCondoXRwQNt0fQvvmYGa_Fn39D9szjQH4eBqIcUd5r1yfH` |
+| **TRX (Tron)** | `TRhnkJFpj9uxA2aqUxapJAFhkzNPbfxKwp` |
 
 ---
 

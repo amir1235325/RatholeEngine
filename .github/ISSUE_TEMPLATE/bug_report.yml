@@ -1,0 +1,50 @@
+name: Bug report
+description: Something is broken
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: run `sudo ratholectl doctor` and check `sudo ratholectl logs`.
+  - type: dropdown
+    id: role
+    attributes:
+      label: Which component?
+      options:
+        - Iran panel (ratholectl)
+        - Foreign node (ratholenode)
+        - Hub web panel (ratholehub)
+        - Install / update script
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`ratholectl version` or `ratholenode version`"
+      placeholder: "v1.8.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect vs what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ratholectl add ...
+        2. ratholectl backhaul on ...
+        3. Error: ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste output of `ratholectl logs` or `journalctl -u rathole-server -n 50`
+      render: shell
