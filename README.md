@@ -21,8 +21,6 @@ _Built for censorship-resistant tunneling into Iran._
 
 [![Star History Chart](https://api.star-history.com/svg?repos=loopy-iri/RatholeEngine&type=Date)](https://star-history.com/#loopy-iri/RatholeEngine&Date)
 
-[![Star History](https://api.star-history.com/svg?repos=loopy-iri/RatholeEngine&type=Date)](https://star-history.com/#loopy-iri/RatholeEngine&Date)
-
 [**English**](#what-is-this) · [**فارسی**](docs/README.fa.md) · [**Full Wiki**](https://github.com/loopy-iri/RatholeEngine/wiki) · [Quick start](#quick-start) · [Documentation](#documentation) · [Telegram](https://t.me/l8PY4NET)
 
 </div>
