@@ -113,10 +113,11 @@ gen_client(){
       echo "type = \"websocket\""
       echo "[client.transport.websocket]"
       echo "tls = ${tls}"
-      # TAVAHH: rathole-e v0.5.0 dar [client.transport.websocket] FAGHAT `tls` ra mipazirad;
-      # field-e `path` nadarad va config ra KAMLAN rad mikonad (client crash-loop). control
-      # WebSocket-e rathole hamishe '/' ast va gabel-e taghir nist — routing-e path tvst nginx
-      # (map $uri) anjam mishavad, na rathole. pas WS_PATH ra inja TZRIGH nakon.
+      # control_path: agar set shode bashad (az '/' motafavet), path ra ezafe kon
+      local cp="${CONTROL_PATH:-/}"
+      if [ "$cp" != "/" ]; then
+        echo "path = \"${cp}\""
+      fi
       if [ "$tls" = "true" ]; then
         echo "[client.transport.tls]"
         echo "$hostline"
@@ -808,8 +809,8 @@ UNIT
 gen_up_client(){
   local id="$1"
   [ -f "$(up_env "$id")" ] || die "upstream '$id' vojood nadarad."
-  local SERVER HOST TUNNEL KCP_LOCAL KCP_REMOTE KCP_PROFILE PLAIN_REMOTE NOISE_REMOTE NOISE_PUBKEY NOISE_PATTERN toml
-  unset SERVER HOST TUNNEL KCP_LOCAL KCP_REMOTE KCP_PROFILE PLAIN_REMOTE NOISE_REMOTE NOISE_PUBKEY NOISE_PATTERN
+  local SERVER HOST TUNNEL KCP_LOCAL KCP_REMOTE KCP_PROFILE PLAIN_REMOTE NOISE_REMOTE NOISE_PUBKEY NOISE_PATTERN CONTROL_PATH toml
+  unset SERVER HOST TUNNEL KCP_LOCAL KCP_REMOTE KCP_PROFILE PLAIN_REMOTE NOISE_REMOTE NOISE_PUBKEY NOISE_PATTERN CONTROL_PATH
   set -a; . "$(up_env "$id")"; set +a
   HOST="${HOST:-${SERVER%%:*}}"
   toml="$(up_toml "$id")"
@@ -842,6 +843,11 @@ gen_up_client(){
       echo "type = \"websocket\""
       echo "[client.transport.websocket]"
       echo "tls = ${tls}"
+      # control_path: agar set shode bashad (az '/' motafavet), path ra ezafe kon
+      local cp="${CONTROL_PATH:-/}"
+      if [ "$cp" != "/" ]; then
+        echo "path = \"${cp}\""
+      fi
       if [ "$tls" = "true" ]; then
         echo "[client.transport.tls]"
         echo "hostname = \"${HOST}\""
@@ -1133,7 +1139,48 @@ cmd_upstream(){
         echo "$(c_g "upstream '$id':") $(grep -E '^SERVER=' "$e" | cut -d= -f2-)  [tunnel=$t]"
         [ -f "$(up_svc "$id")" ] && sed -E 's/\|[^|]*\|/|***|/' "$(up_svc "$id")" | sed 's/^/    /'
       done ;;
-    *) die "estefade: ratholenode upstream <add|add-svc|rm-svc|rm|apply|restart|kcp|plain|noise|ws|status|logs|ls> ..." ;;
+    control-path)
+      local id="${1:-}"; shift || true
+      local act="${1:-show}"; shift || true
+      [ -n "$id" ] || die "estefade: ratholenode upstream control-path <id> <show|set <path>|clear>"
+      [ -f "$(up_env "$id")" ] || die "upstream '$id' nist."
+      case "$act" in
+        show)
+          local cp; cp="$(grep -oE '^CONTROL_PATH=.*' "$(up_env "$id")" 2>/dev/null | cut -d= -f2-)"
+          cp="${cp:-/}"
+          echo "upstream '$id' control_path=$cp"
+          ;;
+        set)
+          local path="${1:-}"
+          [ -n "$path" ] || die "estefade: ratholenode upstream control-path $id set <path>"
+          case "$path" in /*) ;; *) die "path bayad ba / shoroo shavad: $path" ;; esac
+          printf '%s' "$path" | grep -qE '^/[A-Za-z0-9_./-]{0,120}$' \
+            || die "path namotabar (faghat harf/adad/_/-/. va /): $path"
+          rathole_supports_ws_path \
+            || die "core-e rathole az control_path poshtibani nmikonad. aval artegha bede: ratholenode update"
+          local uold; uold="$(grep -oE '^CONTROL_PATH=.*' "$(up_env "$id")" 2>/dev/null | cut -d= -f2-)"
+          kv_set "$(up_env "$id")" CONTROL_PATH "$path"
+          # taghir-e path yek taghir-e TRANSPORT ast — restart lazem ast, na hot-reload.
+          up_restart "$id"
+          sleep 3
+          if ! systemctl is-active --quiet "rathole-client@${id}"; then
+            warn "upstream '$id' baad az taghir-e control-path bala nayamad — rollback..."
+            if [ -n "$uold" ]; then kv_set "$(up_env "$id")" CONTROL_PATH "$uold"
+            else sed -i '/^CONTROL_PATH=/d' "$(up_env "$id")" 2>/dev/null || true; fi
+            up_restart "$id"
+            die "control-path-e upstream '$id' emal nashod va rollback shod (ghabli: ${uold:-/})."
+          fi
+          log "upstream '$id' control-path set shod: $path"
+          ;;
+        clear)
+          sed -i '/^CONTROL_PATH=/d' "$(up_env "$id")" 2>/dev/null || true
+          up_restart "$id"
+          log "upstream '$id' control-path pak shod (default: /)"
+          ;;
+        *) die "estefade: ratholenode upstream control-path <id> <show|set <path>|clear>" ;;
+      esac
+      ;;
+    *) die "estefade: ratholenode upstream <add|add-svc|rm-svc|rm|apply|restart|kcp|plain|noise|ws|status|logs|ls|control-path> ..." ;;
   esac
 }
 
@@ -1298,6 +1345,53 @@ cmd_restore(){
   log "restore node kamel shod."
 }
 
+# ---------- control-path: tanzim masir-e makhfi WebSocket ----------
+cmd_control_path(){
+  local sub="${1:-show}"; shift || true
+  case "$sub" in
+    show)
+      load_env
+      local cp="${CONTROL_PATH:-/}"
+      echo "control_path=$cp"
+      ;;
+    set)
+      need_root
+      local path="${1:-}"
+      [ -n "$path" ] || die "estefade: ratholenode control-path set <path>"
+      # validation: bayad ba / shoroo shavad va control-char/space nadashte bashad
+      case "$path" in /*) ;; *) die "path bayad ba / shoroo shavad: $path" ;; esac
+      printf '%s' "$path" | grep -qE '^/[A-Za-z0-9_./-]{0,120}$' \
+        || die "path namotabar (faghat harf/adad/_/-/. va /): $path"
+
+      rathole_supports_ws_path \
+        || die "core-e rathole az control_path poshtibani nmikonad. aval artegha bede: ratholenode update"
+
+      local old; old="$(grep -oE '^CONTROL_PATH=.*' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)"
+      env_set CONTROL_PATH "$path"
+      gen_client
+      # taghir-e path yek taghir-e TRANSPORT ast — hot-reload an ra emal nemikonad, pas restart.
+      restart_svc
+      # health-check + rollback: agar tunnel bala nayamad, be halat-e ghabli bargard.
+      sleep 3
+      if ! systemctl is-active --quiet "$SVC"; then
+        warn "tunnel baad az taghir-e control-path bala nayamad — rollback..."
+        if [ -n "$old" ]; then env_set CONTROL_PATH "$old"; else sed -i '/^CONTROL_PATH=/d' "$ENV_FILE" 2>/dev/null || true; fi
+        gen_client; restart_svc
+        die "control-path emal nashod va rollback shod (masir-e ghabli: ${old:-/})."
+      fi
+      log "control-path set shod: $path"
+      ;;
+    clear)
+      need_root
+      sed -i '/^CONTROL_PATH=/d' "$ENV_FILE" 2>/dev/null || true
+      gen_client
+      restart_svc
+      log "control-path pak shod (default: /)"
+      ;;
+    *) die "estefade: ratholenode control-path show|set <path>|clear" ;;
+  esac
+}
+
 # namayesh naghshe-ye mohajerat hame-ye tunnelha (main + upstreamha) be kcp/FEC
 cmd_migrate(){
   load_env
@@ -1395,6 +1489,11 @@ ratholenode — mdirit klaint rathole (chnd service rooye yek tunnel)
   watchdog <on [interval]|off|status>   restart khodkar tunnel gir-karde/ghat-shode
   backup [file] | restore <file>   backup/restore tanzimat node
   update [beta|stable|vX.Y.Z]    beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release؛ tag = noskhe-ye khas
+  doctor                         barresi-ye salamat node va poshtibanei core az control_path
+  control-path show              masir-e jari (pishfarz: /)
+  control-path set <masir>       tanzim masir-e makhfi (masalan: /_rh/abc123...) + restart + rollback-e khodkar
+                                 ⚠ FAGHAT vaghti server-e Iran az ghabl `ratholectl control-path rotate` zade
+  control-path clear             bargasht be '/' (pishfarz) — tunnel-haye bedoon-e patch ham kar mikonand
   logs [n]                       log-e rathole-client
   logs all [n] [--bundle]        log-e HAME chiz (service-ha + config-ha) — token-ha redact mishavand; --bundle = file-e .txt.gz baraye scp
   show                           namayesh tanzimat (tokenha makhfi)
@@ -1663,6 +1762,71 @@ print('consecutive_failures:', d.get('consecutive_failures','?'))
   esac
 }
 
+# ---------- doctor: barresi-ye salamat node va support-e binary ----------
+cmd_doctor(){
+  echo "$(c_g '==== barresi-ye node va binary ====')"
+  local ok=0 bad=0
+
+  # 1. barresi vojood-e binary
+  if command -v /usr/local/bin/rathole >/dev/null 2>&1; then
+    printf '  %s rathole binary vojood darad\n' "$(c_g 'OK ')"
+    ok=$((ok+1))
+  else
+    printf '  %s rathole binary peyda nashod\n' "$(c_r 'FAIL')"
+    bad=$((bad+1))
+  fi
+
+  # 2. barresi-ye gheabelyat-e core baraye control_path (patch-e websocket.path)
+  echo "$(c_g '== barresi gheabelyat core baraye control_path ==')"
+  local bin_supports_path=0
+  if rathole_supports_ws_path; then
+    printf '  %s core az control_path poshtibani mikonad\n' "$(c_g 'OK ')"
+    bin_supports_path=1; ok=$((ok+1))
+  else
+    printf '  %s core az control_path poshtibani nmikonad (field path nadarad)\n' "$(c_y 'WARN')"
+    printf '       control_path ekhtiari ast; masir-e pishfarz / hamchenan kar mikonad.\n'
+  fi
+
+  # 3. barresi vojood node.env
+  if [ -f "$ENV_FILE" ]; then
+    printf '  %s %s vojood darad\n' "$(c_g 'OK ')" "$ENV_FILE"
+    ok=$((ok+1))
+  else
+    printf '  %s %s peyda nashod (node hanooz init nashode?)\n' "$(c_y 'WARN')" "$ENV_FILE"
+  fi
+
+  # 4. barresi services
+  if [ -f "$SVC_FILE" ]; then
+    local svc_count; svc_count="$(grep -cE '^[^#]' "$SVC_FILE" 2>/dev/null || echo 0)"
+    printf '  %s %d service dar %s\n' "$(c_g 'OK ')" "$svc_count" "$SVC_FILE"
+    ok=$((ok+1))
+  else
+    printf '  %s %s peyda nashod\n' "$(c_y 'WARN')" "$SVC_FILE"
+  fi
+
+  # 5. barresi vaziat systemd
+  if systemctl is-active --quiet rathole-client; then
+    printf '  %s rathole-client.service faal ast\n' "$(c_g 'OK ')"
+    ok=$((ok+1))
+  else
+    printf '  %s rathole-client.service faal nist\n' "$(c_y 'WARN')"
+  fi
+
+  # 6. barresi upstreamha
+  if [ -d "$UP_DIR" ]; then
+    local up_count; up_count="$(find "$UP_DIR" -maxdepth 1 -name '*.env' 2>/dev/null | wc -l)"
+    if [ "$up_count" -gt 0 ]; then
+      printf '  %s %d upstream(s) tanzie shode\n' "$(c_g 'OK ')" "$up_count"
+      ok=$((ok+1))
+    fi
+  fi
+
+  echo
+  echo "$(c_g "khlash:") OK=$ok  FAIL=$bad"
+  [ "$bin_supports_path" -eq 1 ] && echo "$(c_g '→ binary az control_path poshtibnai mikonad')"
+  [ "$bin_supports_path" -eq 0 ] && echo "$(c_y '→ binary az control_path poshtibnai nmikonad — rotate gheyre-mymkn ast')"
+}
+
 main(){
   case "${1:-show}" in
     apply)   cmd_apply ;;
@@ -1672,6 +1836,7 @@ main(){
     set)     shift; cmd_set "${1:-}" "${2:-}" ;;
     set-main) shift; cmd_set_main "${1:-}" "${2:-}" "${3:-}" ;;
     check)   cmd_check ;;
+    doctor)  cmd_doctor ;;
     tune)    cmd_tune ;;
     kcp)     shift; cmd_kcp "$@" ;;
     plain)   shift; cmd_plain "$@" ;;
@@ -1685,6 +1850,7 @@ main(){
     upstream) shift; cmd_upstream "$@" ;;
     backup)  shift; cmd_backup "${1:-}" ;;
     restore) shift; cmd_restore "${1:-}" ;;
+    control-path) shift; cmd_control_path "$@" ;;
     show)    cmd_show ;;
     status)  cmd_status ;;
     update)  shift; cmd_update "${1:-}" ;;

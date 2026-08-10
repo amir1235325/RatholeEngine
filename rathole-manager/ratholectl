@@ -680,11 +680,36 @@ PXB
     done
     echo "}"
     echo
-    # masir-e makhfi WebSocket; fallback-e / dige websocket ra be ctrl nemiferestad
+    # masir-e makhfi WebSocket; fallback-e / HAM websocket ra be ctrl miferestad (sazgari)
     local ctrl_path
     ctrl_path="$(jq -r '.control_path // ""' "$STATE" 2>/dev/null)"
     if [ -z "$ctrl_path" ] || [ "$ctrl_path" = "null" ]; then
       ctrl_path="$(ensure_control_path)"
+    fi
+    # MOHEM: agar ctrl_path haman '/' bashad, block-e ekhtesasi NABAYAD sakhte shavad —
+    # vagarna do 'location = /' dar yek server block misazim va `nginx -t` shekast mikhorad
+    # (regenerate an vaght be .rathole-good.bak barmigardad va taghir bi-seda gom mishavad).
+    # ponytail: masir-e '/' hamchenan websocket ra be ctrl miferestad ta node-haye ghadimi
+    # (bedoon-e path) ghat nashavand — pas ta zamani ke hameye node-ha berooz nashode-and,
+    # DPI mitavanad kontrol ra rooye '/' peyda konad. baraye sakht-giri-ye kamel, baad az
+    # berooz-resani-ye hameye node-ha: map-e root ra be 'default fake' mahdood kon.
+    local ctrl_path_block=""
+    if [ "$ctrl_path" != "/" ]; then
+      ctrl_path_block="$(cat <<CTRLLOC
+    location = ${ctrl_path} {
+        proxy_pass http://127.0.0.1:${ctrl};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        tcp_nodelay on;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+CTRLLOC
+)"
     fi
     echo "# rishh: sait fik; websocket az masir-e makhfi VA rishh (fallback) be ctrl miravad"
     echo "map \$http_upgrade \$root_backend {"
@@ -737,18 +762,7 @@ server {
 ${hub_block}
 ${bh_block}
 ${proxy_block}
-    location = ${ctrl_path} {
-        proxy_pass http://127.0.0.1:${ctrl};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        tcp_nodelay on;
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-    }
+${ctrl_path_block}
     location = / {
         proxy_pass http://127.0.0.1:\$root_backend;
         proxy_http_version 1.1;
@@ -798,18 +812,7 @@ ${hub_block}
 ${bh_block}
 ${proxy_block}
     # rishh: tfkik sait fik az channel kontroli ba hdr Upgrade
-    location = ${ctrl_path} {
-        proxy_pass http://127.0.0.1:${ctrl};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        tcp_nodelay on;
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-    }
+${ctrl_path_block}
 
     location = / {
         proxy_pass http://127.0.0.1:\$root_backend;
@@ -2727,6 +2730,17 @@ cmd_doctor(){
     bad=$((bad+1))
   fi
 
+  # barresi-ye gheabelyat-e core baraye control_path (patch-e websocket.path)
+  echo "$(c_g '== barresi gheabelyat core ==')"
+  local bin_supports_path=0
+  if rathole_supports_ws_path; then
+    printf '  %s core az control_path poshtibani mikonad\n' "$(c_g 'OK ')"
+    bin_supports_path=1; ok=$((ok+1))
+  else
+    printf '  %s core az control_path poshtibani nmikonad (field path nadarad)\n' "$(c_y 'WARN')"
+    printf '       control_path ekhtiari ast; masir-e pishfarz / hamchenan kar mikonad.\n'
+  fi
+
   echo "$(c_g '== tst tmaiz sait fik / channel kontroli (az rooye hamin server) ==')"
   if command -v curl >/dev/null 2>&1; then
     local root_code ws_root ws_cp cp
@@ -2749,6 +2763,12 @@ cmd_doctor(){
         printf '  %s control-path WS (%s) → 101 (kontrol salem)\n' "$(c_g 'OK ')" "$cp"; ok=$((ok+1))
       else
         printf '  %s control-path WS (%s) → %s (entezar 101)\n' "$(c_r 'FAIL')" "$cp" "$ws_cp"; bad=$((bad+1))
+      fi
+      # HOSHDAR: agar control_path set shode amma binary support nadarad → node crash mikonad
+      if [ "$bin_supports_path" -eq 0 ]; then
+        printf '  %s control_path dar state set shode (%s) vali binary support nadarad!\n' "$(c_r 'FAIL')" "$cp"
+        printf '       node-ha CRASH khahnd krd. baraye pak-krdn: ratholectl control-path clear\n'
+        bad=$((bad+1))
       fi
     fi
   else
@@ -2962,6 +2982,12 @@ dstvrha:
   game add <name> <inbound> <sni>   service game (SNI rooye 443, TLS rooye node)
 
   game rm <name> | ls | show <name> | cert <sni>   mdirit service game va gvahi
+  control-path <show|rotate [--dry-run]|clear>   masir-e makhfi-ye channel-e kontroli (/_rh/<hex32>).
+                               rotate: masir-e jadid + health-check + rollback-e khodkar. baad az an rooye HAR node:
+                                 ratholenode control-path set <masir>        (tunnel-e asli)
+                                 ratholenode upstream control-path <id> set <masir>   (har server-e Iran joda)
+                               clear: bargasht be '/' (pishfarz). masir-e '/' hamishe ham-chenan kar mikonad،
+                               pas node-haye berooz-nashode GHAT NEMISHAVAND.
   restart                      restart kamel rathole-server (tunnelha lhzhai ghat)
   enable                       faalsazi va start rathole-server
   update [beta|stable|vX.Y.Z]  beroozresani-e kamel az GitHub (snapshot + rollback-e khodkar). 'beta' = akharin pre-release؛ tag = noskhe-ye khas
@@ -2977,23 +3003,70 @@ cmd_control_path(){
   case "$sub" in
     show)
       local p; p="$(jq -r '.control_path // empty' "$STATE" 2>/dev/null)"
-      [ -n "$p" ] && echo "control_path=$p" || echo "control_path=(set nashode — aval init ya regen bezan)"
+      [ -n "$p" ] && echo "control_path=$p" || echo "control_path=(set nashode — default '/')"
       ;;
     rotate)
       need_root
+      # 1. barresi-ye poshtibani-ye core (rooye Iran faghat baraye hoshdar; node-ha mohem-tar-and)
+      rathole_supports_ws_path \
+        || die "core-e rathole az control_path poshtibani nmikonad. aval artegha bede: ratholectl update"
+
+      # 2. dry-run?
+      local dry_run=0
+      [ "${1:-}" = "--dry-run" ] && { dry_run=1; shift || true; }
+
       local old new
-      old="$(jq -r '.control_path // empty' "$STATE" 2>/dev/null)"
-      new="/_rh/$(openssl rand -hex 16)"
-      # masir-e ghabli ra baraye yek dore-ye gozar zakhire mikonim ta node-haye dar-hal-update ghat nakonand
-      state_set '.control_path_previous' "${old:-}" str
+      old="$(jq -r '.control_path // "/"' "$STATE" 2>/dev/null)"
+      new="/_rh/$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p)"
+
+      if [ "$dry_run" -eq 1 ]; then
+        echo "$(c_y '[DRY-RUN]') control-path taghir mide:"
+        echo "  ghabli: $old"
+        echo "  jadid:  $new"
+        echo "baraye apply: ratholectl control-path rotate"
+        return 0
+      fi
+
+      # 3. backup state
+      cp -p "$STATE" "${STATE}.pre-rotate" 2>/dev/null || true
+
+      # 4. apply
+      state_set '.control_path_previous' "${old}" str
       state_set '.control_path' "$new" str
-      regenerate
+      regenerate || {
+        warn "regenerate shekast khord — rollback..."
+        [ -f "${STATE}.pre-rotate" ] && mv "${STATE}.pre-rotate" "$STATE"
+        regenerate
+        die "rotate shekast khord va rollback shod."
+      }
+
+      # 5. health check
+      sleep 2
+      if ! systemctl is-active --quiet rathole-server; then
+        warn "rathole-server ghat shod — rollback..."
+        [ -f "${STATE}.pre-rotate" ] && mv "${STATE}.pre-rotate" "$STATE"
+        regenerate
+        systemctl restart rathole-server 2>/dev/null || true
+        die "health-check fail — rollback shod."
+      fi
+
       log "control-path rotate shod: $old → $new"
       warn "hame-ye node-haye vasl-ra ba dastoor-e zir berooz kon:"
-      warn "  ratholenode set SERVER <panel-domain>:443  # ya az hub update bezan"
+      warn "  ratholenode control-path set '$new'"
+      warn "  ya az hub: deploy (hub khodkar sync mikonad)"
       echo "new_control_path=$new"
+      rm -f "${STATE}.pre-rotate"
       ;;
-    *) die "estefade: ratholectl control-path show|rotate" ;;
+    clear)
+      need_root
+      local old; old="$(jq -r '.control_path // "/"' "$STATE" 2>/dev/null)"
+      state_set '.control_path' "/" str
+      state_set '.control_path_previous' "" str
+      regenerate
+      log "control-path pak shod: $old → / (default)"
+      warn "rooye hame node-ha: ratholenode control-path clear"
+      ;;
+    *) die "estefade: ratholectl control-path show|rotate [--dry-run]|clear" ;;
   esac
 }
 

@@ -133,6 +133,42 @@ print_version(){
   echo "rathole_version=${rv}"
 }
 
+# ---------- tashkhis-e poshtibani-ye core az `path` dar websocket ----------
+# CHERA: rathole-e upstream (v0.5.0) dar [*.transport.websocket] FAGHAT `tls` ra mipazirad
+# (serde ba deny_unknown_fields) — pas `path` KOL-e config ra rad mikonad va client
+# crash-loop mishavad. core-e patch-shode-ye ma (core/patches/0001-websocket-retry-path.patch)
+# field-e `path` ra ba default "/" ezafe mikonad.
+# TAVAJOH: rathole flag-e `--check` NADARAD (faghat -s/-c/--genkey/--version) — pas
+# etebar-sanji bayad az rah-e ejra-ye vaghei ba timeout anjam shavad.
+# khoruji: rc=0 → poshtibani mikonad، rc=1 → nemikonad (ya nashenakhte → amn: na).
+rathole_supports_ws_path(){
+  local bin="${1:-/usr/local/bin/rathole}"
+  [ -x "$bin" ] || return 1
+  # 1) core-e khodemAn: build.sh version ra be '<x.y.z>-ratholeengine.N' pin mikonad.
+  "$bin" --version 2>/dev/null | grep -qi 'ratholeengine' && return 0
+  # 2) fallback baraye binary-haye digar: config-e test ba `path` bede.
+  #    bedoon-e patch: "unknown field `path`" va marg-e foori.
+  #    ba patch: config parse mishavad va soraghe ettesal miravad (ke timeout mikoshadesh).
+  command -v mktemp >/dev/null 2>&1 || return 1
+  local t out; t="$(mktemp)" || return 1
+  cat >"$t" <<'RHPROBE'
+[client]
+remote_addr = "127.0.0.1:1"
+[client.transport]
+type = "websocket"
+[client.transport.websocket]
+tls = false
+path = "/_probe"
+[client.services.probe]
+token = "probe"
+local_addr = "127.0.0.1:1"
+RHPROBE
+  out="$(timeout 5 "$bin" -c "$t" 2>&1 | head -n 20)"
+  rm -f "$t"
+  echo "$out" | grep -qiE 'unknown field.*path' && return 1
+  return 0
+}
+
 # profile FEC → "datashard parityshard mode sndwnd rcvwnd"
 kcp_profile(){
   case "${1:-balanced}" in
